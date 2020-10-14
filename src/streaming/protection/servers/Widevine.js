@@ -31,6 +31,8 @@
 
 function Widevine() {
 
+    function log(msg) { console.log('Widevine.js::init', msg); }
+
     let instance;
 
     function getServerURLFromMessage(url /*, message, messageType*/) {
@@ -38,18 +40,22 @@ function Widevine() {
     }
 
     function getHTTPMethod(/*messageType*/) {
-        return 'POST';
+        log('Widevine.js::getHTTPMethod', keySystemStr);
+        return 'GET';
     }
 
     function getResponseType(/*keySystemStr, messageType*/) {
-        return 'arraybuffer';
+        log('Widevine.js::getResponseType', keySystemStr);
+        return 'json';
     }
 
     function getLicenseMessage(serverResponse/*, keySystemStr, messageType*/) {
+        log('getLicenseMessage:' + serverResponse);
         return serverResponse;
     }
 
     function getErrorResponse(serverResponse/*, keySystemStr, messageType*/) {
+        log('getErrorResponse:' + serverResponse);
         return String.fromCharCode.apply(null, new Uint8Array(serverResponse));
     }
 

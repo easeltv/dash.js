@@ -45,27 +45,58 @@ const schemeIdURI = 'urn:uuid:' + uuid;
 
 function KeySystemWidevine(config) {
 
+    function log(...args) { args.unshift('KeySystemWidevine'); console.log.apply(console, args); }
+
+    log('KeySystemWidevine: ' + JSON.stringify(config));
+
     config = config || {};
     let instance;
     let protData = null;
     const BASE64 = config.BASE64;
 
     function init(protectionData) {
+        log('init ' + JSON.stringify(protectionData));
         if (protectionData) {
             protData = protectionData;
         }
     }
 
     function getInitData(cp) {
+        log('getInitData ' + JSON.stringify(cp));
         return CommonEncryption.parseInitDataFromContentProtection(cp, BASE64);
     }
 
-    function getRequestHeadersFromMessage( /*message*/ ) {
-        return null;
+    function getRequestHeadersFromMessage( message ) {
+        if (protData && protData.theplatform) {
+            log('getRequestHeadersFromMessage::message is::' + JSON.stringify(message));
+            const headers = {};
+            headers['Content-Type'] = 'application/json; charset=UTF-8';
+            return headers;
+        } else {
+            return null;
+        }
     }
 
     function getLicenseRequestFromMessage(message) {
-        return new Uint8Array(message);
+        log('getLicenseRequestFromMessage ' + JSON.stringify(message));
+        if (protData && protData.theplatform) {
+            const tp = protData.theplatform;
+            var widevineChallenge = _arrayBufferToBase64(message);
+            console.log('KeySystemWidevine.js::getLicenseRequestFromMessage::4');
+            var requestContents = {
+                'getWidevineLicense': {
+                    'releasePid': tp.releasePid,
+                    'widevineChallenge': widevineChallenge
+                }
+            };
+
+            log('getLicenseRequestFromMessage::requestContents is::' + JSON.stringify(requestContents));
+
+            return JSON.stringify(requestContents);
+
+        } else {
+            return new Uint8Array(message);
+        }
     }
 
     function getLicenseServerURLFromInitData( /*initData*/ ) {
@@ -77,6 +108,7 @@ function KeySystemWidevine(config) {
     }
 
     function getSessionId(cp) {
+        log('getSessionId ' + JSON.stringify(cp));
         // Get sessionId from protectionData or from manifest
         if (protData && protData.sessionId) {
             return protData.sessionId;
@@ -84,6 +116,16 @@ function KeySystemWidevine(config) {
             return cp.sessionId;
         }
         return null;
+    }
+
+    function _arrayBufferToBase64( buffer ) {
+        var binary = '';
+        var bytes = new Uint8Array( buffer );
+        var len = bytes.byteLength;
+        for (var i = 0; i < len; i++) {
+            binary += String.fromCharCode( bytes[ i ] );
+        }
+        return window.btoa( binary );
     }
 
     instance = {

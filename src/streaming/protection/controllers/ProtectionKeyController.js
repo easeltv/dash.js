@@ -34,6 +34,7 @@ import KeySystemW3CClearKey from './../drm/KeySystemW3CClearKey';
 import KeySystemWidevine from './../drm/KeySystemWidevine';
 import KeySystemPlayReady from './../drm/KeySystemPlayReady';
 import DRMToday from './../servers/DRMToday';
+import ThePlatform from './../servers/ThePlatform';
 import PlayReady from './../servers/PlayReady';
 import Widevine from './../servers/Widevine';
 import ClearKey from './../servers/ClearKey';
@@ -271,6 +272,7 @@ function ProtectionKeyController() {
      *
      */
     function getLicenseServer(keySystem, protData, messageType) {
+        console.log('ProtectionKeyController getLicenseServer', arguments);
 
         // Our default server implementations do not do anything with "license-release" or
         // "individualization-request" messages, so we just send a success event
@@ -279,9 +281,15 @@ function ProtectionKeyController() {
         }
 
         let licenseServerData = null;
-        if (protData && protData.hasOwnProperty('drmtoday')) {
+        if (protData && protData.hasOwnProperty('theplatform')) {
+            console.log(JSON.stringify(protData));
+            console.log('ProtectionKeyController.js::Its the platform');
+            licenseServerData = ThePlatform(context).getInstance({ tpData: protData.theplatform, BASE64: BASE64 });
+        } else if (protData && protData.hasOwnProperty('drmtoday')) {
             licenseServerData = DRMToday(context).getInstance({ BASE64: BASE64 });
         } else if (keySystem.systemString === ProtectionConstants.WIDEVINE_KEYSTEM_STRING) {
+            console.log('ProtectionKeyController.js::Its Widevine   ');
+            //licenseServerData = ThePlatform(context).getInstance({ tpData: protData.theplatform, BASE64: BASE64 });
             licenseServerData = Widevine(context).getInstance();
         } else if (keySystem.systemString === ProtectionConstants.PLAYREADY_KEYSTEM_STRING) {
             licenseServerData = PlayReady(context).getInstance();
