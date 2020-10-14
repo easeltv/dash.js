@@ -31,21 +31,27 @@
 
 /**
  * @module MssParser
+ * @ignore
  * @param {Object} config object
  */
+
+import BigInt from '../../../externals/BigInteger';
+
 function MssParser(config) {
     config = config || {};
     const BASE64 = config.BASE64;
     const debug = config.debug;
     const constants = config.constants;
     const manifestModel = config.manifestModel;
+    const mediaPlayerModel = config.mediaPlayerModel;
+    const settings = config.settings;
 
     const DEFAULT_TIME_SCALE = 10000000.0;
     const SUPPORTED_CODECS = ['AAC', 'AACL', 'AVC1', 'H264', 'TTML', 'DFXP'];
-    // MPEG-DASH Role and accessibility mapping according to ETSI TS 103 285 v1.1.1 (section 7.1.2)
+    // MPEG-DASH Role and accessibility mapping for text tracks according to ETSI TS 103 285 v1.1.1 (section 7.1.2)
     const ROLE = {
+        'CAPT': 'main',
         'SUBT': 'alternate',
-        'CAPT': 'alternate', // 'CAPT' is commonly equivalent to 'SUBT'
         'DESC': 'main'
     };
     const ACCESSIBILITY = {
@@ -73,13 +79,11 @@ function MssParser(config) {
     };
 
     let instance,
-        logger,
-        mediaPlayerModel;
+        logger;
 
 
     function setup() {
         logger = debug.getLogger(instance);
-        mediaPlayerModel = config.mediaPlayerModel;
     }
 
     function mapPeriod(smoothStreamingMedia, timescale) {
@@ -121,7 +125,7 @@ function MssParser(config) {
         adaptationSet.maxWidth = streamIndex.getAttribute('MaxWidth');
         adaptationSet.maxHeight = streamIndex.getAttribute('MaxHeight');
 
-        // Map subTypes to MPEG-DASH AdaptationSet role and accessibility (see ETSI TS 103 285 v1.1.1, section 7.1.2)
+        // Map text tracks subTypes to MPEG-DASH AdaptationSet role and accessibility (see ETSI TS 103 285 v1.1.1, section 7.1.2)
         if (adaptationSet.subType) {
             if (ROLE[adaptationSet.subType]) {
                 let role = {
@@ -314,10 +318,12 @@ function MssParser(config) {
     function mapSegmentTemplate(streamIndex, timescale) {
         const segmentTemplate = {};
         let mediaUrl,
-            streamIndexTimeScale;
+            streamIndexTimeScale,
+            url;
 
-        mediaUrl = streamIndex.getAttribute('Url').replace('{bitrate}', '$Bandwidth$');
-        mediaUrl = mediaUrl.replace('{start time}', '$Time$');
+        url = streamIndex.getAttribute('Url');
+        mediaUrl = url ? url.replace('{bitrate}', '$Bandwidth$') : null;
+        mediaUrl = mediaUrl ? mediaUrl.replace('{start time}', '$Time$') : null;
 
         streamIndexTimeScale = streamIndex.getAttribute('TimeScale');
         streamIndexTimeScale = streamIndexTimeScale ? parseFloat(streamIndexTimeScale) : timescale;
@@ -348,7 +354,9 @@ function MssParser(config) {
 
             // => segment.tManifest = original timestamp value as a string (for constructing the fragment request url, see DashHandler)
             // => segment.t = number value of timestamp (maybe rounded value, but only for 0.1 microsecond)
-            segment.tManifest = parseFloat(tManifest);
+            if (tManifest && BigInt(tManifest).greater(BigInt(Number.MAX_SAFE_INTEGER))) {
+                segment.tManifest = tManifest;
+            }
             segment.t = parseFloat(tManifest);
 
             // Get duration 'd' attribute value
@@ -364,7 +372,7 @@ function MssParser(config) {
                 // Update previous segment duration if not defined
                 if (!prevSegment.d) {
                     if (prevSegment.tManifest) {
-                        prevSegment.d = parseFloat(tManifest) - parseFloat(prevSegment.tManifest);
+                        prevSegment.d = BigInt(tManifest).subtract(BigInt(prevSegment.tManifest)).toJSNumber();
                     } else {
                         prevSegment.d = segment.t - prevSegment.t;
                     }
@@ -373,7 +381,7 @@ function MssParser(config) {
                 // Set segment absolute timestamp if not set in manifest
                 if (!segment.t) {
                     if (prevSegment.tManifest) {
-                        segment.tManifest = parseFloat(prevSegment.tManifest) + prevSegment.d;
+                        segment.tManifest = BigInt(prevSegment.tManifest).add(BigInt(prevSegment.d)).toString();
                         segment.t = parseFloat(segment.tManifest);
                     } else {
                         segment.t = prevSegment.t + prevSegment.d;
@@ -398,7 +406,7 @@ function MssParser(config) {
                     segment.t = prevSegment.t + prevSegment.d;
                     segment.d = prevSegment.d;
                     if (prevSegment.tManifest) {
-                        segment.tManifest  = parseFloat(prevSegment.tManifest) + prevSegment.d;
+                        segment.tManifest  = BigInt(prevSegment.tManifest).add(BigInt(prevSegment.d)).toString();
                     }
                     duration += segment.d;
                     segments.push(segment);
@@ -425,21 +433,23 @@ function MssParser(config) {
         // Get Right Management header (WRMHEADER) from PlayReady header
         wrmHeader = getWRMHeaderFromPRHeader(prHeader);
 
-        // Convert from multi-byte to unicode
-        wrmHeader = new Uint16Array(wrmHeader.buffer);
+        if (wrmHeader) {
+            // Convert from multi-byte to unicode
+            wrmHeader = new Uint16Array(wrmHeader.buffer);
 
-        // Convert to string
-        wrmHeader = String.fromCharCode.apply(null, wrmHeader);
+            // Convert to string
+            wrmHeader = String.fromCharCode.apply(null, wrmHeader);
 
-        // Parse <WRMHeader> to get KID field value
-        xmlReader = (new DOMParser()).parseFromString(wrmHeader, 'application/xml');
-        KID = xmlReader.querySelector('KID').textContent;
+            // Parse <WRMHeader> to get KID field value
+            xmlReader = (new DOMParser()).parseFromString(wrmHeader, 'application/xml');
+            KID = xmlReader.querySelector('KID').textContent;
 
-        // Get KID (base64 decoded) as byte array
-        KID = BASE64.decodeArray(KID);
+            // Get KID (base64 decoded) as byte array
+            KID = BASE64.decodeArray(KID);
 
-        // Convert UUID from little-endian to big-endian
-        convertUuidEndianness(KID);
+            // Convert UUID from little-endian to big-endian
+            convertUuidEndianness(KID);
+        }
 
         return KID;
     }
@@ -512,7 +522,13 @@ function MssParser(config) {
         };
     }
 
-    function createWidevineContentProtection(protectionHeader, KID) {
+    function createWidevineContentProtection(KID) {
+        let widevineCP = {
+            schemeIdUri: 'urn:uuid:edef8ba9-79d6-4ace-a3c8-27dcd51d21ed',
+            value: 'com.widevine.alpha'
+        };
+        if (!KID)
+            return widevineCP;
         // Create Widevine CENC header (Protocol Buffer) with KID value
         const wvCencHeader = new Uint8Array(2 + KID.length);
         wvCencHeader[0] = 0x12;
@@ -551,13 +567,9 @@ function MssParser(config) {
         pssh = String.fromCharCode.apply(null, pssh);
         pssh = BASE64.encodeASCII(pssh);
 
-        return {
-            schemeIdUri: 'urn:uuid:edef8ba9-79d6-4ace-a3c8-27dcd51d21ed',
-            value: 'com.widevine.alpha',
-            pssh: {
-                __text: pssh
-            }
-        };
+        widevineCP.pssh = { __text: pssh };
+
+        return widevineCP;
     }
 
     function processManifest(xmlDoc, manifestLoadedTime) {
@@ -574,6 +586,7 @@ function MssParser(config) {
             startTime,
             segments,
             timescale,
+            segmentDuration,
             i, j;
 
         // Set manifest node properties
@@ -583,9 +596,15 @@ function MssParser(config) {
         timescale =  smoothStreamingMedia.getAttribute('TimeScale');
         manifest.timescale = timescale ? parseFloat(timescale) : DEFAULT_TIME_SCALE;
         let dvrWindowLength = parseFloat(smoothStreamingMedia.getAttribute('DVRWindowLength'));
+        // If the DVRWindowLength field is omitted for a live presentation or set to 0, the DVR window is effectively infinite
+        if (manifest.type === 'dynamic' && (dvrWindowLength === 0 || isNaN(dvrWindowLength))) {
+            dvrWindowLength = Infinity;
+        }
+        // Star-over
         if (dvrWindowLength === 0 && smoothStreamingMedia.getAttribute('CanSeek') === 'TRUE') {
             dvrWindowLength = Infinity;
         }
+
         if (dvrWindowLength > 0) {
             manifest.timeShiftBufferDepth = dvrWindowLength / manifest.timescale;
         }
@@ -604,10 +623,8 @@ function MssParser(config) {
             // Duration will be set according to current segment timeline duration (see below)
         }
 
-        // In case of live streams, set availabilityStartTime property according to DVRWindowLength
         if (manifest.type === 'dynamic'  && manifest.timeShiftBufferDepth < Infinity) {
-            manifest.availabilityStartTime = new Date(manifestLoadedTime.getTime() - (manifest.timeShiftBufferDepth * 1000));
-            manifest.refreshManifestOnSwitchTrack = true;
+            manifest.refreshManifestOnSwitchTrack = true; // Refresh manifest when switching tracks
             manifest.doNotUpdateDVRWindowOnBufferUpdated = true; // DVRWindow is update by MssFragmentMoofPocessor based on tfrf boxes
             manifest.ignorePostponeTimePeriod = true; // Never update manifest
         }
@@ -644,7 +661,7 @@ function MssParser(config) {
             contentProtections.push(contentProtection);
 
             // Create ContentProtection for Widevine (as a CENC protection)
-            contentProtection = createWidevineContentProtection(protectionHeader, KID);
+            contentProtection = createWidevineContentProtection(KID);
             contentProtection['cenc:default_KID'] = KID;
             contentProtections.push(contentProtection);
 
@@ -662,28 +679,51 @@ function MssParser(config) {
                 adaptations[i].ContentProtection_asArray = manifest.ContentProtection_asArray;
             }
 
-            // Set minBufferTime
             if (adaptations[i].contentType === 'video') {
-                manifest.minBufferTime = adaptations[i].SegmentTemplate.SegmentTimeline.S_asArray[0].d / adaptations[i].SegmentTemplate.timescale * 2;
-            }
+                // Get video segment duration
+                segmentDuration = adaptations[i].SegmentTemplate.SegmentTimeline.S_asArray[0].d / adaptations[i].SegmentTemplate.timescale;
+                // Set minBufferTime
+                manifest.minBufferTime = segmentDuration * 2;
 
-            if (manifest.type === 'dynamic') {
-                // Set availabilityStartTime for infinite DVR Window from segment timeline duration
-                if (manifest.timeShiftBufferDepth === Infinity) {
-                    manifest.availabilityStartTime = new Date(manifestLoadedTime.getTime() - (adaptations[i].SegmentTemplate.SegmentTimeline.duration * 1000));
-                }
-                // Match timeShiftBufferDepth to video segment timeline duration
-                if (manifest.timeShiftBufferDepth > 0 &&
-                    manifest.timeShiftBufferDepth !== Infinity &&
-                    adaptations[i].contentType === 'video' &&
-                    manifest.timeShiftBufferDepth > adaptations[i].SegmentTemplate.SegmentTimeline.duration) {
-                    manifest.timeShiftBufferDepth = adaptations[i].SegmentTemplate.SegmentTimeline.duration;
+                if (manifest.type === 'dynamic' ) {
+                    // Set availabilityStartTime
+                    segments = adaptations[i].SegmentTemplate.SegmentTimeline.S_asArray;
+                    let endTime = (segments[segments.length - 1].t + segments[segments.length - 1].d) / adaptations[i].SegmentTemplate.timescale * 1000;
+                    manifest.availabilityStartTime = new Date(manifestLoadedTime.getTime() - endTime);
+
+                    // Match timeShiftBufferDepth to video segment timeline duration
+                    if (manifest.timeShiftBufferDepth > 0 &&
+                        manifest.timeShiftBufferDepth !== Infinity &&
+                        manifest.timeShiftBufferDepth > adaptations[i].SegmentTemplate.SegmentTimeline.duration) {
+                        manifest.timeShiftBufferDepth = adaptations[i].SegmentTemplate.SegmentTimeline.duration;
+                    }
                 }
             }
         }
 
-        if (manifest.timeShiftBufferDepth < manifest.minBufferTime) {
-            manifest.minBufferTime = manifest.timeShiftBufferDepth;
+        // Cap minBufferTime to timeShiftBufferDepth
+        manifest.minBufferTime = Math.min(manifest.minBufferTime, (manifest.timeShiftBufferDepth ? manifest.timeShiftBufferDepth : Infinity));
+
+        // In case of live streams:
+        // 1- configure player buffering properties according to target live delay
+        // 2- adapt live delay and then buffers length in case timeShiftBufferDepth is too small compared to target live delay (see PlaybackController.computeLiveDelay())
+        if (manifest.type === 'dynamic') {
+            let targetLiveDelay = mediaPlayerModel.getLiveDelay();
+            if (!targetLiveDelay) {
+                targetLiveDelay = segmentDuration * settings.get().streaming.liveDelayFragmentCount;
+            }
+            let targetDelayCapping = Math.max(manifest.timeShiftBufferDepth - 10/*END_OF_PLAYLIST_PADDING*/, manifest.timeShiftBufferDepth / 2);
+            let liveDelay = Math.min(targetDelayCapping, targetLiveDelay);
+            // Consider a margin of one segment in order to avoid Precondition Failed errors (412), for example if audio and video are not correctly synchronized
+            let bufferTime = liveDelay - segmentDuration;
+            settings.update({
+                'streaming': {
+                    'liveDelay': liveDelay,
+                    'stableBufferTime': bufferTime,
+                    'bufferTimeAtTopQuality': bufferTime,
+                    'bufferTimeAtTopQualityLongForm': bufferTime
+                }
+            });
         }
 
         // Delete Content Protection under root manifest node
@@ -735,7 +775,7 @@ function MssParser(config) {
         }
 
         // Floor the duration to get around precision differences between segments timestamps and MSE buffer timestamps
-        // and the avoid 'ended' event not being raised
+        // and then avoid 'ended' event not being raised
         manifest.mediaPresentationDuration = Math.floor(manifest.mediaPresentationDuration * 1000) / 1000;
         period.duration = manifest.mediaPresentationDuration;
 

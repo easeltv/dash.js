@@ -29,6 +29,9 @@
  *  POSSIBILITY OF SUCH DAMAGE.
  */
 
+/**
+ * @ignore
+ */
 function Widevine() {
 
     function log(msg) { console.log('Widevine.js::init', msg); }

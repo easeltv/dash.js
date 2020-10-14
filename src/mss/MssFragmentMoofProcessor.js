@@ -34,7 +34,8 @@ import MssErrors from './errors/MssErrors';
 import Events from '../streaming/MediaPlayerEvents';
 
 /**
- * @module MssFragmentMoovProcessor
+ * @module MssFragmentMoofProcessor
+ * @ignore
  * @param {Object} config object
  */
 function MssFragmentMoofProcessor(config) {
@@ -58,7 +59,6 @@ function MssFragmentMoofProcessor(config) {
     function processTfrf(request, tfrf, tfdt, streamProcessor) {
         const representationController = streamProcessor.getRepresentationController();
         const representation = representationController.getCurrentRepresentation();
-        const indexHandler = streamProcessor.getIndexHandler();
 
         const manifest = representation.adaptation.period.mpd.manifest;
         const adaptation = manifest.Period_asArray[representation.adaptation.period.index].AdaptationSet_asArray[representation.adaptation.index];
@@ -169,7 +169,7 @@ function MssFragmentMoofProcessor(config) {
             updateDVR(type, range, streamProcessor.getStreamInfo().manifestInfo);
         }
 
-        indexHandler.updateSegmentList(representation);
+        representationController.updateRepresentation(representation, true);
     }
 
     function updateDVR(type, range, manifestInfo) {

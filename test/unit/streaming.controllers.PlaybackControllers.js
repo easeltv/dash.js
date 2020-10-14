@@ -8,6 +8,7 @@ import MediaPlayerModelMock from './mocks/MediaPlayerModelMock';
 import DashMetricsMock from './mocks/DashMetricsMock';
 import StreamControllerMock from './mocks/StreamControllerMock';
 import URIFragmentModelMock from './mocks/URIFragmentModelMock';
+import AdapterMock from './mocks/AdapterMock';
 
 const expect = require('chai').expect;
 const context = {};
@@ -22,6 +23,7 @@ describe('PlaybackController', function () {
         mediaPlayerModelMock,
         streamControllerMock,
         uriFragmentModelMock,
+        adapterMock,
         settings;
 
     beforeEach(function () {
@@ -30,6 +32,7 @@ describe('PlaybackController', function () {
         mediaPlayerModelMock = new MediaPlayerModelMock();
         streamControllerMock = new StreamControllerMock();
         uriFragmentModelMock = new URIFragmentModelMock();
+        adapterMock = new AdapterMock();
         playbackController = PlaybackController(context).getInstance();
         settings = Settings(context).getInstance();
 
@@ -39,6 +42,7 @@ describe('PlaybackController', function () {
             mediaPlayerModel: mediaPlayerModelMock,
             streamController: streamControllerMock,
             uriFragmentModel: uriFragmentModelMock,
+            adapter: adapterMock,
             settings: settings
         });
     });
@@ -81,12 +85,18 @@ describe('PlaybackController', function () {
         beforeEach(function () {
             let streamInfo = {
                 manifestInfo: {
-                    isDynamic: true
+                    isDynamic: true,
+                    availableFrom: new Date()
                 },
                 start: 10
             };
 
             playbackController.initialize(streamInfo);
+        });
+
+        it('should return NaN when getLiveDelay is called after a call to computeLiveDelay with no parameter', function () {
+            expect(playbackController.computeLiveDelay.bind(playbackController)).not.to.throw();
+            expect(playbackController.getLiveDelay()).to.be.NaN; // jshint ignore:line
         });
 
         describe('video management', function () {
@@ -155,6 +165,7 @@ describe('PlaybackController', function () {
             });
 
             it('getStartTimeFromUriParameters should return the expected value', function () {
+                uriFragmentModelMock.setURIFragmentData({t: 18.2});
                 const uriParameters = playbackController.getStartTimeFromUriParameters();
                 expect(uriParameters.fragT).to.exist; // jshint ignore:line
                 expect(uriParameters.fragT).to.equal(18.2);
@@ -285,6 +296,36 @@ describe('PlaybackController', function () {
 
                 eventBus.on(Events.PLAYBACK_ERROR, onError, this);
                 videoModelMock.fireEvent('error', [{target: { error: 'error'}}]);
+            });
+
+            it('should handle stalled event', function (done) {
+                let onStalled = function () {
+                    eventBus.off(Events.PLAYBACK_STALLED, onStalled);
+                    done();
+                };
+
+                eventBus.on(Events.PLAYBACK_STALLED, onStalled, this);
+                videoModelMock.fireEvent('stalled');
+            });
+
+            it('should handle timeupdate event', function (done) {
+                let onTimeUpdated = function () {
+                    eventBus.off(Events.PLAYBACK_TIME_UPDATED, onTimeUpdated);
+                    done();
+                };
+
+                eventBus.on(Events.PLAYBACK_TIME_UPDATED, onTimeUpdated, this);
+                videoModelMock.fireEvent('timeupdate');
+            });
+
+            it('should handle waiting event', function (done) {
+                let onPlaybackWaiting = function () {
+                    eventBus.off(Events.PLAYBACK_WAITING, onPlaybackWaiting);
+                    done();
+                };
+
+                eventBus.on(Events.PLAYBACK_WAITING, onPlaybackWaiting, this);
+                videoModelMock.fireEvent('waiting');
             });
         });
 

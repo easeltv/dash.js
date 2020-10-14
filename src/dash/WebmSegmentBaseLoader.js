@@ -6,9 +6,6 @@ import FactoryMaker from '../core/FactoryMaker';
 import Debug from '../core/Debug';
 import RequestModifier from '../streaming/utils/RequestModifier';
 import Segment from './vo/Segment';
-import {
-    HTTPRequest
-} from '../streaming/vo/metrics/HTTPRequest';
 import FragmentRequest from '../streaming/vo/FragmentRequest';
 import HTTPLoader from '../streaming/net/HTTPLoader';
 import DashJSError from '../streaming/vo/DashJSError';
@@ -214,6 +211,10 @@ function WebmSegmentBaseLoader() {
     }
 
     function parseEbmlHeader(data, media, theRange, callback) {
+        if (!data || data.byteLength === 0) {
+            callback(null);
+            return;
+        }
         let ebmlParser = EBMLParser(context).create({
             data: data
         });
@@ -221,13 +222,13 @@ function WebmSegmentBaseLoader() {
             segments,
             segmentEnd,
             segmentStart;
-        let parts = theRange.split('-');
+        let parts = theRange ? theRange.split('-') : null;
         let request = null;
         let info = {
             url: media,
             range: {
-                start: parseFloat(parts[0]),
-                end: parseFloat(parts[1])
+                start: parts ? parseFloat(parts[0]) : null,
+                end: parts ? parseFloat(parts[1]) : null
             },
             request: request
         };
@@ -302,17 +303,17 @@ function WebmSegmentBaseLoader() {
     function loadInitialization(representation, loadingInfo) {
         checkConfig();
         let request = null;
-        let baseUrl = baseURLController.resolve(representation.path);
-        let media = baseUrl ? baseUrl.url : undefined;
-        let initRange = representation.range.split('-');
+        let baseUrl = representation ? baseURLController.resolve(representation.path) : null;
+        let initRange = representation ? representation.range.split('-') : null;
         let info = loadingInfo || {
             range: {
-                start: parseFloat(initRange[0]),
-                end: parseFloat(initRange[1])
+                start: initRange ? parseFloat(initRange[0]) : null,
+                end: initRange ? parseFloat(initRange[1]) : null
             },
             request: request,
-            url: media,
-            init: true
+            url: baseUrl ? baseUrl.url : undefined,
+            init: true,
+            mediaType: representation && representation.adaptation ? representation.adaptation.type : null
         };
 
         logger.info('Start loading initialization.');
@@ -345,7 +346,7 @@ function WebmSegmentBaseLoader() {
     function loadSegments(representation, type, theRange, callback) {
         checkConfig();
         let request = null;
-        let baseUrl = baseURLController.resolve(representation.path);
+        let baseUrl = representation ? baseURLController.resolve(representation.path) : null;
         let media = baseUrl ? baseUrl.url : undefined;
         let bytesToLoad = 8192;
         let info = {
@@ -357,7 +358,8 @@ function WebmSegmentBaseLoader() {
             },
             request: request,
             url: media,
-            init: false
+            init: false,
+            mediaType: representation && representation.adaptation ? representation.adaptation.type : null
         };
 
         callback = !callback ? onLoaded : callback;
@@ -403,12 +405,8 @@ function WebmSegmentBaseLoader() {
     }
 
     function getFragmentRequest(info) {
-        let request = new FragmentRequest();
-
-        request.type = info.init ? HTTPRequest.INIT_SEGMENT_TYPE : HTTPRequest.MEDIA_SEGMENT_TYPE;
-        request.url = info.url;
-        request.range = info.range.start + '-' + info.range.end;
-
+        const request = new FragmentRequest();
+        request.setInfo(info);
         return request;
     }
 

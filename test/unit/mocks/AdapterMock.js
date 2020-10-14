@@ -3,8 +3,20 @@ function AdapterMock () {
         BUFFER_STATE: 'BUFFER_STATE'
     };
 
-    this.getEventsFor = function () {
+    this.getSuggestedPresentationDelay = function () {
         return null;
+    };
+
+    this.getAvailabilityStartTime = function () {
+        return null;
+    };
+
+    this.getRealAdaptation = function () {
+        return null;
+    };
+
+    this.getEventsFor = function () {
+        return [];
     };
 
     this.getAllMediaInfoForType = function () {
@@ -69,6 +81,33 @@ function AdapterMock () {
     this.getRepresentationSortFunction = function () {
         // Return a silly sort function
         return function () { return 0; };
+    };
+
+    this.getManifestUpdatePeriod = function () {
+        return 0;
+    };
+
+    this.updatePeriods = function () {
+    };
+
+    this.getUseCalculatedLiveEdgeTimeForMediaInfo = function () {
+        return false;
+    };
+
+    this.getUTCTimingSources = function () {
+        return [];
+    };
+
+    this.getIsDynamic = function () {
+        return false;
+    };
+
+    this.getIsDVB = function () {
+        return false;
+    };
+
+    this.convertDataToRepresentationInfo = function () {
+        return null;
     };
 }
 

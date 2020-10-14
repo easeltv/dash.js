@@ -188,12 +188,16 @@ function DashManifestModel() {
         return adaptation && adaptation.hasOwnProperty(DashConstants.AUDIOCHANNELCONFIGURATION_ASARRAY) ? adaptation.AudioChannelConfiguration_asArray : [];
     }
 
+    function getAudioChannelConfigurationForRepresentation(representation) {
+        return representation && representation.hasOwnProperty(DashConstants.AUDIOCHANNELCONFIGURATION_ASARRAY) ? representation.AudioChannelConfiguration_asArray : [];
+    }
+
     function getRepresentationSortFunction() {
         return (a, b) => a.bandwidth - b.bandwidth;
     }
 
     function processAdaptation(realAdaptation) {
-        if (realAdaptation && realAdaptation.Representation_asArray !== undefined && realAdaptation.Representation_asArray !== null) {
+        if (realAdaptation && Array.isArray(realAdaptation.Representation_asArray)) {
             realAdaptation.Representation_asArray.sort(getRepresentationSortFunction());
         }
 
@@ -228,15 +232,16 @@ function DashManifestModel() {
     }
 
     function getIndexForAdaptation(realAdaptation, manifest, periodIndex) {
-        const realAdaptations = getRealAdaptations(manifest, periodIndex);
-        const len = realAdaptations.length;
+        if (!realAdaptation) {
+            return -1;
+        }
 
-        if (realAdaptation) {
-            for (let i = 0; i < len; i++) {
-                let objectUtils = ObjectUtils(context).getInstance();
-                if (objectUtils.areEqual(realAdaptations[i], realAdaptation)) {
-                    return i;
-                }
+        const realAdaptations = getRealAdaptations(manifest, periodIndex);
+
+        for (let i = 0; i < realAdaptations.length; i++) {
+            let objectUtils = ObjectUtils(context).getInstance();
+            if (objectUtils.areEqual(realAdaptations[i], realAdaptation)) {
+                return i;
             }
         }
 
@@ -287,7 +292,7 @@ function DashManifestModel() {
     }
 
     function getLabelsForAdaptation(adaptation) {
-        if (!adaptation || !adaptation.Label_asArray || !Array.isArray(adaptation.Label_asArray)) {
+        if (!adaptation || !Array.isArray(adaptation.Label_asArray)) {
             return [];
         }
 
@@ -356,14 +361,12 @@ function DashManifestModel() {
     }
 
     function getRepresentationCount(adaptation) {
-        return adaptation && adaptation.Representation_asArray && adaptation.Representation_asArray.length ? adaptation.Representation_asArray.length : 0;
+        return adaptation && Array.isArray(adaptation.Representation_asArray) ? adaptation.Representation_asArray.length : 0;
     }
 
     function getBitrateListForAdaptation(realAdaptation) {
-        if (!realAdaptation || !realAdaptation.Representation_asArray || !realAdaptation.Representation_asArray.length) return null;
-
         const processedRealAdaptation = processAdaptation(realAdaptation);
-        const realRepresentations = processedRealAdaptation.Representation_asArray;
+        const realRepresentations = processedRealAdaptation && Array.isArray(processedRealAdaptation.Representation_asArray) ? processedRealAdaptation.Representation_asArray : [];
 
         return realRepresentations.map((realRepresentation) => {
             return {
@@ -407,7 +410,7 @@ function DashManifestModel() {
 
     function getUseCalculatedLiveEdgeTimeForAdaptation(voAdaptation) {
         let realAdaptation = getRealAdaptationFor(voAdaptation);
-        let realRepresentation = realAdaptation ? realAdaptation.Representation_asArray[0] : null;
+        let realRepresentation = realAdaptation && Array.isArray(realAdaptation.Representation_asArray) ? realAdaptation.Representation_asArray[0] : null;
         let segmentInfo;
         if (realRepresentation) {
             if (realRepresentation.hasOwnProperty(DashConstants.SEGMENT_LIST)) {
@@ -432,18 +435,17 @@ function DashManifestModel() {
         let segmentInfo,
             baseUrl;
 
-        // TODO: TO BE REMOVED. We should get just the baseUrl elements that affects to the representations
-        // that we are processing. Making it works properly will require much further changes and given
-        // parsing base Urls parameters is needed for our ultra low latency examples, we will
-        // keep this "tricky" code until the real (and good) solution comes
-        if (voAdaptation && voAdaptation.period && isInteger(voAdaptation.period.index)) {
-            const baseUrls = getBaseURLsFromElement(voAdaptation.period.mpd.manifest);
-            if (baseUrls) {
-                baseUrl = baseUrls[0];
-            }
-        }
-
         if (processedRealAdaptation && processedRealAdaptation.Representation_asArray) {
+            // TODO: TO BE REMOVED. We should get just the baseUrl elements that affects to the representations
+            // that we are processing. Making it works properly will require much further changes and given
+            // parsing base Urls parameters is needed for our ultra low latency examples, we will
+            // keep this "tricky" code until the real (and good) solution comes
+            if (voAdaptation && voAdaptation.period && isInteger(voAdaptation.period.index)) {
+                const baseUrls = getBaseURLsFromElement(voAdaptation.period.mpd.manifest);
+                if (baseUrls) {
+                    baseUrl = baseUrls[0];
+                }
+            }
             for (let i = 0, len = processedRealAdaptation.Representation_asArray.length; i < len; ++i) {
                 const realRepresentation = processedRealAdaptation.Representation_asArray[i];
                 const voRepresentation = new Representation();
@@ -510,11 +512,13 @@ function DashManifestModel() {
 
                 if (segmentInfo) {
                     if (segmentInfo.hasOwnProperty(DashConstants.INITIALIZATION)) {
-                        let initialization = segmentInfo.Initialization;
+                        const initialization = segmentInfo.Initialization;
 
                         if (initialization.hasOwnProperty(DashConstants.SOURCE_URL)) {
                             voRepresentation.initialization = initialization.sourceURL;
-                        } else if (initialization.hasOwnProperty(DashConstants.RANGE)) {
+                        }
+
+                        if (initialization.hasOwnProperty(DashConstants.RANGE)) {
                             voRepresentation.range = initialization.range;
                             // initialization source url will be determined from
                             // BaseURL when resolved at load time.
@@ -531,7 +535,6 @@ function DashManifestModel() {
                         // It is also said that for a SegmentTimeline any @d value shall not exceed the value of MPD@maxSegmentDuration, but nothing is said about
                         // SegmentTemplate @duration attribute. We need to find out if @maxSegmentDuration should be used instead of calculated duration if the the duration
                         // exceeds @maxSegmentDuration
-                        //representation.segmentDuration = Math.min(segmentInfo.duration / representation.timescale, adaptation.period.mpd.maxSegmentDuration);
                         voRepresentation.segmentDuration = segmentInfo.duration / voRepresentation.timescale;
                     }
                     if (segmentInfo.hasOwnProperty(DashConstants.MEDIA)) {
@@ -750,7 +753,7 @@ function DashManifestModel() {
 
     function checkConfig() {
         if (!errHandler || !errHandler.hasOwnProperty('error')) {
-            throw new Error('setConfig function has to be called previously');
+            throw new Error(Constants.MISSING_CONFIG_ERROR);
         }
     }
 
@@ -813,7 +816,8 @@ function DashManifestModel() {
                     }
 
                     if (eventStreams[i].Event_asArray[j].Signal && eventStreams[i].Event_asArray[j].Signal.Binary) {
-                        event.messageData = BASE64.decodeArray(eventStreams[i].Event_asArray[j].Signal.Binary);
+                        // toString is used to manage both regular and namespaced tags
+                        event.messageData = BASE64.decodeArray(eventStreams[i].Event_asArray[j].Signal.Binary.toString());
                     } else {
                         // From Cor.1: 'NOTE: this attribute is an alternative
                         // to specifying a complete XML element(s) in the Event.
@@ -1033,7 +1037,61 @@ function DashManifestModel() {
     }
 
     function getAvailabilityStartTime(mpd) {
-        return mpd && mpd.hasOwnProperty(DashConstants.AVAILABILITY_START_TIME) ? mpd.availabilityStartTime.getTime() : null;
+        return mpd && mpd.hasOwnProperty(DashConstants.AVAILABILITY_START_TIME) && mpd.availabilityStartTime !== null ? mpd.availabilityStartTime.getTime() : null;
+    }
+
+    function getServiceDescriptions(manifest) {
+        const serviceDescriptions = [];
+        if (manifest && manifest.hasOwnProperty(DashConstants.SERVICE_DESCRIPTION)) {
+            for (const sd of manifest.ServiceDescription_asArray) {
+                // Convert each of the properties defined in
+                let id, schemeIdUri, latency, playbackRate;
+                for (const prop in sd) {
+                    if (sd.hasOwnProperty(prop)) {
+                        if (prop === DashConstants.ID) {
+                            id = sd[prop];
+                        } else if (prop === DashConstants.SERVICE_DESCRIPTION_SCOPE) {
+                            schemeIdUri = sd[prop].schemeIdUri;
+                        } else if (prop === DashConstants.SERVICE_DESCRIPTION_LATENCY) {
+                            latency = {
+                                target: sd[prop].target,
+                                max: sd[prop].max,
+                                min: sd[prop].min
+                            };
+                        } else if (prop === DashConstants.SERVICE_DESCRIPTION_PLAYBACK_RATE) {
+                            playbackRate = {
+                                max: sd[prop].max,
+                                min: sd[prop].min
+                            };
+                        }
+                    }
+                }
+                // we have a ServiceDescription for low latency. Add it if it really has parameters defined
+                if (schemeIdUri === Constants.SERVICE_DESCRIPTION_LL_SCHEME && (latency || playbackRate)) {
+                    serviceDescriptions.push({
+                        id,
+                        schemeIdUri,
+                        latency,
+                        playbackRate
+                    });
+                }
+            }
+        }
+
+        return serviceDescriptions;
+    }
+
+    function getSupplementalPropperties(adaptation) {
+        const supplementalProperties = {};
+
+        if (adaptation && adaptation.hasOwnProperty(DashConstants.SUPPLEMENTAL_PROPERTY)) {
+            for (const sp of adaptation.SupplementalProperty_asArray) {
+                if (sp.hasOwnProperty(Constants.SCHEME_ID_URI) && sp.hasOwnProperty(DashConstants.VALUE)) {
+                    supplementalProperties[sp[Constants.SCHEME_ID_URI]] = sp[DashConstants.VALUE];
+                }
+            }
+        }
+        return supplementalProperties;
     }
 
     function setConfig(config) {
@@ -1056,6 +1114,7 @@ function DashManifestModel() {
         getRolesForAdaptation: getRolesForAdaptation,
         getAccessibilityForAdaptation: getAccessibilityForAdaptation,
         getAudioChannelConfigurationForAdaptation: getAudioChannelConfigurationForAdaptation,
+        getAudioChannelConfigurationForRepresentation: getAudioChannelConfigurationForRepresentation,
         getAdaptationForIndex: getAdaptationForIndex,
         getIndexForAdaptation: getIndexForAdaptation,
         getAdaptationForId: getAdaptationForId,
@@ -1087,6 +1146,8 @@ function DashManifestModel() {
         getUseCalculatedLiveEdgeTimeForAdaptation: getUseCalculatedLiveEdgeTimeForAdaptation,
         getSuggestedPresentationDelay: getSuggestedPresentationDelay,
         getAvailabilityStartTime: getAvailabilityStartTime,
+        getServiceDescriptions: getServiceDescriptions,
+        getSupplementalPropperties: getSupplementalPropperties,
         setConfig: setConfig
     };
 

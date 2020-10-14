@@ -34,7 +34,7 @@
 import MetricsConstants from '../../constants/MetricsConstants';
 import SwitchRequest from '../SwitchRequest';
 import FactoryMaker from '../../../core/FactoryMaker';
-import {HTTPRequest} from '../../vo/metrics/HTTPRequest';
+import { HTTPRequest } from '../../vo/metrics/HTTPRequest';
 import EventBus from '../../../core/EventBus';
 import Events from '../../../core/events/Events';
 import Debug from '../../../core/Debug';
@@ -383,6 +383,13 @@ function BolaRule(config) {
     }
 
     function getMaxIndex(rulesContext) {
+        const switchRequest = SwitchRequest(context).create();
+
+        if (!rulesContext || !rulesContext.hasOwnProperty('getMediaInfo') || !rulesContext.hasOwnProperty('getMediaType') ||
+            !rulesContext.hasOwnProperty('getScheduleController') || !rulesContext.hasOwnProperty('getStreamInfo') ||
+            !rulesContext.hasOwnProperty('getAbrController') || !rulesContext.hasOwnProperty('useBufferOccupancyABR')) {
+            return switchRequest;
+        }
         const mediaInfo = rulesContext.getMediaInfo();
         const mediaType = rulesContext.getMediaType();
         const scheduleController = rulesContext.getScheduleController();
@@ -392,7 +399,6 @@ function BolaRule(config) {
         const streamId = streamInfo ? streamInfo.id : null;
         const isDynamic = streamInfo && streamInfo.manifestInfo && streamInfo.manifestInfo.isDynamic;
         const useBufferOccupancyABR = rulesContext.useBufferOccupancyABR();
-        const switchRequest = SwitchRequest(context).create();
         switchRequest.reason = switchRequest.reason || {};
 
         if (!useBufferOccupancyABR) {
