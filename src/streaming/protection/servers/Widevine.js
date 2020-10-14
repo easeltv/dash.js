@@ -40,12 +40,12 @@ function Widevine() {
     }
 
     function getHTTPMethod(/*messageType*/) {
-        log('Widevine.js::getHTTPMethod', keySystemStr);
+        //log('Widevine.js::getHTTPMethod', keySystemStr);
         return 'GET';
     }
 
     function getResponseType(/*keySystemStr, messageType*/) {
-        log('Widevine.js::getResponseType', keySystemStr);
+        // log('Widevine.js::getResponseType', keySystemStr);
         return 'json';
     }
 

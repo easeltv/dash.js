@@ -31,7 +31,7 @@ function ThePlatform(config) {
         console.log('getServerURLFromMessage', url);
         // return url + '/wv/web/ModularDrm/getWidevineLicense?form=json&schema=1.0'
         //     + '&_releasePid=' + config.releasePid
-        url = "https://widevine.entitlement.theplatform.eu";
+        url = 'https://widevine.entitlement.theplatform.eu';
         return url + '/wv/web/ModularDrm?form=json&schema=1.0' +
             '&account=' + encodeURIComponent(tpData.accountId) +
             '&token=' + encodeURIComponent(tpData.token);

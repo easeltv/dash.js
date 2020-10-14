@@ -1,7 +1,18 @@
 [
     {
-        "section": "Getting Started",
+        "section": "Easel",
         "active": true,
+        "samples": [
+            {
+                "title": "ThePlatform DASH + Widevine example",
+                "description": "(License wrapping)",
+                "href": "easel/theplatform-dash-widevine.html",
+                "width": "20rem"
+            }
+        ]
+    },
+    {
+        "section": "Getting Started",
         "samples": [
             {
                 "title": "Auto load single video src",

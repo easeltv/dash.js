@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <title>ThePlatform DASH + Widevine example</title>
+
+  <script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/lodash@4.17.20/lodash.min.js"></script>
+  <script src="../../dist/dash.all.debug.js"></script>
+  <!--dash.all.min.js should be used in production over dash.all.debug.js
+    Debug files are not compressed or obfuscated making the file size much larger compared with dash.all.min.js-->
+  <!--<script src="../../dist/dash.all.min.js"></script>-->
+
+  <script class="code">
+    // save time, populate these
+    var defaults = {
+      licenseServer: "https://widevine.entitlement.theplatform.eu/wv/web/ModularDrm",
+      mpxToken: "",
+      mediaUrl: "",
+      accountId: "http://access.auth.theplatform.com/data/Account/2669535363"
+    };
+
+    function populateDefaults() {
+      $("#licenseserver").val(defaults.licenseServer);
+      $("#mpxtoken").val(defaults.mpxToken);
+      $("#mediaurl").val(defaults.mediaUrl);
+      $("#accountid").val(defaults.accountId);
+    }
+
+    function fetchStreamData() {
+      var mpxToken = $("#mpxtoken").val();
+      var mediaUrl = $("#mediaurl").val();
+
+      var url = mediaUrl + "?format=smil&formats=mpeg-dash&manifest=mpeg-dash&tracking=true&clientId=wvtest"
+        + "&token=" + encodeURIComponent(mpxToken);
+      $.ajax({url: url, dataType: "xml"}).done(function(xml) {
+        var $xml = $(xml);
+        var trackingData = $xml.find("ref").find("param[name=trackingData]").attr("value");
+        var releasePid = trackingData ? _.last(trackingData.match(/\|pid=(.*?)\|/)) : "";
+        var streamUrl = $xml.find("video").attr("src");
+        console.log("releasePid", releasePid, "streamUrl", streamUrl);
+        init(streamUrl, mpxToken, releasePid);
+      });
+    }
+
+    function init(streamUrl, token, releasePid) {
+      const protData = {
+        "com.widevine.alpha": {
+          "serverURL": $("#licenseserver").val(),
+          "theplatform": {
+            "accountId": $("#accountid").val(),
+            "token": token,
+            "releasePid": releasePid
+          }
+         }
+      };
+
+      var video = document.querySelector("video");
+      var player = dashjs.MediaPlayer().create();
+      player.initialize(video, streamUrl, true);
+      player.setProtectionData(protData);
+    }
+  </script>
+
+  <style>
+    video {
+      width: 640px;
+      height: 360px;
+    }
+  </style>
+</head>
+<body>
+<div>
+  <video controls="true">
+  </video>
+</div>
+
+<div>
+  <form>
+    <label for="licenseserver">License server:</label><br>
+    <input type="text" id="licenseserver" name="licenseserver" value="" size="90"><br>
+    <label for="accountid">Account ID:</label><br>
+    <input type="text" id="accountid" name="accountid" value="" size="90"><br>
+    <label for="mpxtoken">MPX token:</label><br>
+    <input type="text" id="mpxtoken" name="mpxtoken" value="" size="90"><br>
+    <label for="mediaurl">Media URL:</label><br>
+    <input type="text" id="mediaurl" name="mediaurl" value="" size="90"><br><br>
+    <input type="button" id="load" value="&gt;&gt; Load vid &lt;&lt;">
+  </form>
+</div>
+
+<script>
+  document.addEventListener("DOMContentLoaded", function () {
+    populateDefaults()
+    $("#load").click(fetchStreamData);
+  });
+</script>
+<script src="../highlighter.js"></script>
+</body>
+</html>
+
+
