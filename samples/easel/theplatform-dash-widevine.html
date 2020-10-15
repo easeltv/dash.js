@@ -12,13 +12,19 @@
   <!--<script src="../../dist/dash.all.min.js"></script>-->
 
   <script class="code">
+
     // save time, populate these
     var defaults = {
       licenseServer: "https://widevine.entitlement.theplatform.eu/wv/web/ModularDrm",
       mpxToken: "",
       mediaUrl: "",
-      accountId: "http://access.auth.theplatform.com/data/Account/2669535363"
+      accountId: "http://access.auth.theplatform.com/data/Account/2669535363",
+      autoLoad: false
     };
+
+    var query = _(location.search.substr(1)).split("&").map(function(x) { return x.split("="); })
+      .fromPairs().transform(function(r, v, k) { r[k] = decodeURIComponent(v); }).value();
+    defaults = _.merge(defaults, query);
 
     function populateDefaults() {
       $("#licenseserver").val(defaults.licenseServer);
@@ -93,6 +99,9 @@
   document.addEventListener("DOMContentLoaded", function () {
     populateDefaults()
     $("#load").click(fetchStreamData);
+    if (defaults.autoLoad) {
+      fetchStreamData();
+    }
   });
 </script>
 <script src="../highlighter.js"></script>
