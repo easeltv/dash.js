@@ -203,13 +203,14 @@ function ProtectionKeyController() {
         let supportedKS = [];
 
         if (cps) {
+            const cencContentProtection = CommonEncryption.findCencContentProtection(cps);
             for (ksIdx = 0; ksIdx < keySystems.length; ++ksIdx) {
                 ks = keySystems[ksIdx];
                 for (cpIdx = 0; cpIdx < cps.length; ++cpIdx) {
                     cp = cps[cpIdx];
                     if (cp.schemeIdUri.toLowerCase() === ks.schemeIdURI) {
                         // Look for DRM-specific ContentProtection
-                        let initData = ks.getInitData(cp);
+                        let initData = ks.getInitData(cp, cencContentProtection);
 
                         supportedKS.push({
                             ks: keySystems[ksIdx],
@@ -296,8 +297,6 @@ function ProtectionKeyController() {
         } else if (protData && protData.hasOwnProperty('drmtoday')) {
             licenseServerData = DRMToday(context).getInstance({ BASE64: BASE64 });
         } else if (keySystem.systemString === ProtectionConstants.WIDEVINE_KEYSTEM_STRING) {
-            console.log('ProtectionKeyController.js::Its Widevine   ');
-            //licenseServerData = ThePlatform(context).getInstance({ tpData: protData.theplatform, BASE64: BASE64 });
             licenseServerData = Widevine(context).getInstance();
         } else if (keySystem.systemString === ProtectionConstants.PLAYREADY_KEYSTEM_STRING) {
             licenseServerData = PlayReady(context).getInstance();

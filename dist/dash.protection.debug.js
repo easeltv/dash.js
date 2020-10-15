@@ -278,7 +278,7 @@ var CommonEncryption = (function () {
             var retVal = null;
             for (var i = 0; i < cpArray.length; ++i) {
                 var cp = cpArray[i];
-                if (cp.schemeIdUri.toLowerCase() === 'urn:mpeg:dash:mp4protection:2011' && cp.value.toLowerCase() === 'cenc') retVal = cp;
+                if (cp.schemeIdUri.toLowerCase() === 'urn:mpeg:dash:mp4protection:2011' && (cp.value.toLowerCase() === 'cenc' || cp.value.toLowerCase() === 'cbcs')) retVal = cp;
             }
             return retVal;
         }
@@ -340,6 +340,10 @@ var CommonEncryption = (function () {
         key: 'parseInitDataFromContentProtection',
         value: function parseInitDataFromContentProtection(cpData, BASE64) {
             if ('pssh' in cpData) {
+
+                // Remove whitespaces and newlines from pssh text
+                cpData.pssh.__text = cpData.pssh.__text.replace(/\r?\n|\r/g, '').replace(/\s+/g, '');
+
                 return BASE64.decodeArray(cpData.pssh.__text).buffer;
             }
             return null;
@@ -924,11 +928,11 @@ var _CommonEncryption = _dereq_(4);
 
 var _CommonEncryption2 = _interopRequireDefault(_CommonEncryption);
 
-var _voMediaCapability = _dereq_(26);
+var _voMediaCapability = _dereq_(27);
 
 var _voMediaCapability2 = _interopRequireDefault(_voMediaCapability);
 
-var _voKeySystemConfiguration = _dereq_(25);
+var _voKeySystemConfiguration = _dereq_(26);
 
 var _voKeySystemConfiguration2 = _interopRequireDefault(_voKeySystemConfiguration);
 
@@ -936,7 +940,7 @@ var _errorsProtectionErrors = _dereq_(13);
 
 var _errorsProtectionErrors2 = _interopRequireDefault(_errorsProtectionErrors);
 
-var _voDashJSError = _dereq_(28);
+var _voDashJSError = _dereq_(29);
 
 var _voDashJSError2 = _interopRequireDefault(_voDashJSError);
 
@@ -1083,12 +1087,18 @@ function ProtectionController(config) {
             try {
                 protectionModel.createKeySession(initDataForKS, protData, getSessionType(keySystem), cdmData);
             } catch (error) {
-                eventBus.trigger(events.KEY_SESSION_CREATED, { data: null, error: new _voDashJSError2['default'](_errorsProtectionErrors2['default'].KEY_SESSION_CREATED_ERROR_CODE, _errorsProtectionErrors2['default'].KEY_SESSION_CREATED_ERROR_MESSAGE + error.message) });
+                eventBus.trigger(events.KEY_SESSION_CREATED, {
+                    data: null,
+                    error: new _voDashJSError2['default'](_errorsProtectionErrors2['default'].KEY_SESSION_CREATED_ERROR_CODE, _errorsProtectionErrors2['default'].KEY_SESSION_CREATED_ERROR_MESSAGE + error.message)
+                });
             }
         } else if (initData) {
             protectionModel.createKeySession(initData, protData, getSessionType(keySystem), cdmData);
         } else {
-            eventBus.trigger(events.KEY_SESSION_CREATED, { data: null, error: new _voDashJSError2['default'](_errorsProtectionErrors2['default'].KEY_SESSION_CREATED_ERROR_CODE, _errorsProtectionErrors2['default'].KEY_SESSION_CREATED_ERROR_MESSAGE + 'Selected key system is ' + (keySystem ? keySystem.systemString : null) + '.  needkey/encrypted event contains no initData corresponding to that key system!') });
+            eventBus.trigger(events.KEY_SESSION_CREATED, {
+                data: null,
+                error: new _voDashJSError2['default'](_errorsProtectionErrors2['default'].KEY_SESSION_CREATED_ERROR_CODE, _errorsProtectionErrors2['default'].KEY_SESSION_CREATED_ERROR_MESSAGE + 'Selected key system is ' + (keySystem ? keySystem.systemString : null) + '.  needkey/encrypted event contains no initData corresponding to that key system!')
+            });
         }
     }
 
@@ -1324,7 +1334,10 @@ function ProtectionController(config) {
                 if (keySystem === supportedKS[ksIdx].ks) {
                     var _ret = (function () {
 
-                        requestedKeySystems.push({ ks: supportedKS[ksIdx].ks, configs: [getKeySystemConfiguration(keySystem)] });
+                        requestedKeySystems.push({
+                            ks: supportedKS[ksIdx].ks,
+                            configs: [getKeySystemConfiguration(keySystem)]
+                        });
 
                         // Ensure that we would be granted key system access using the key
                         // system and codec information
@@ -1337,6 +1350,15 @@ function ProtectionController(config) {
                             } else {
                                 logger.info('DRM: KeySystem Access Granted');
                                 eventBus.trigger(events.KEY_SYSTEM_SELECTED, { data: event.data });
+                                var protData = getProtData(keySystem);
+                                if (protectionKeyController.isClearKey(keySystem)) {
+                                    // For Clearkey: if parameters for generating init data was provided by the user, use them for generating
+                                    // initData and overwrite possible initData indicated in encrypted event (EME)
+                                    if (protData && protData.hasOwnProperty('clearkeys')) {
+                                        var initData = { kids: Object.keys(protData.clearkeys) };
+                                        supportedKS[ksIdx].initData = new TextEncoder().encode(JSON.stringify(initData));
+                                    }
+                                }
                                 if (supportedKS[ksIdx].sessionId) {
                                     // Load MediaKeySession with sessionId
                                     loadKeySession(supportedKS[ksIdx].sessionId, supportedKS[ksIdx].initData);
@@ -1364,7 +1386,10 @@ function ProtectionController(config) {
 
                 // Add all key systems to our request list since we have yet to select a key system
                 for (var i = 0; i < supportedKS.length; i++) {
-                    requestedKeySystems.push({ ks: supportedKS[i].ks, configs: [getKeySystemConfiguration(supportedKS[i].ks)] });
+                    requestedKeySystems.push({
+                        ks: supportedKS[i].ks,
+                        configs: [getKeySystemConfiguration(supportedKS[i].ks)]
+                    });
                 }
 
                 var keySystemAccess = undefined;
@@ -1374,7 +1399,10 @@ function ProtectionController(config) {
                         keySystem = undefined;
                         eventBus.off(events.INTERNAL_KEY_SYSTEM_SELECTED, onKeySystemSelected, self);
                         if (!fromManifest) {
-                            eventBus.trigger(events.KEY_SYSTEM_SELECTED, { data: null, error: new _voDashJSError2['default'](_errorsProtectionErrors2['default'].KEY_SYSTEM_ACCESS_DENIED_ERROR_CODE, _errorsProtectionErrors2['default'].KEY_SYSTEM_ACCESS_DENIED_ERROR_MESSAGE + event.error) });
+                            eventBus.trigger(events.KEY_SYSTEM_SELECTED, {
+                                data: null,
+                                error: new _voDashJSError2['default'](_errorsProtectionErrors2['default'].KEY_SYSTEM_ACCESS_DENIED_ERROR_CODE, _errorsProtectionErrors2['default'].KEY_SYSTEM_ACCESS_DENIED_ERROR_MESSAGE + event.error)
+                            });
                         }
                     } else {
                         keySystemAccess = event.data;
@@ -1400,11 +1428,13 @@ function ProtectionController(config) {
                         for (var i = 0; i < pendingNeedKeyData.length; i++) {
                             for (ksIdx = 0; ksIdx < pendingNeedKeyData[i].length; ksIdx++) {
                                 if (keySystem === pendingNeedKeyData[i][ksIdx].ks) {
-                                    // For Clearkey: if parameters for generating init data was provided by the user, use them for generating
-                                    // initData and overwrite possible initData indicated in encrypted event (EME)
-                                    if (protectionKeyController.isClearKey(keySystem) && protData && protData.hasOwnProperty('clearkeys')) {
-                                        var initData = { kids: Object.keys(protData.clearkeys) };
-                                        pendingNeedKeyData[i][ksIdx].initData = new TextEncoder().encode(JSON.stringify(initData));
+                                    if (protectionKeyController.isClearKey(keySystem)) {
+                                        // For Clearkey: if parameters for generating init data was provided by the user, use them for generating
+                                        // initData and overwrite possible initData indicated in encrypted event (EME)
+                                        if (protData && protData.hasOwnProperty('clearkeys')) {
+                                            var initData = { kids: Object.keys(protData.clearkeys) };
+                                            pendingNeedKeyData[i][ksIdx].initData = new TextEncoder().encode(JSON.stringify(initData));
+                                        }
                                     }
                                     if (pendingNeedKeyData[i][ksIdx].sessionId) {
                                         // Load MediaKeySession with sessionId
@@ -1420,7 +1450,10 @@ function ProtectionController(config) {
                     } else {
                         keySystem = undefined;
                         if (!fromManifest) {
-                            eventBus.trigger(events.KEY_SYSTEM_SELECTED, { data: null, error: new _voDashJSError2['default'](_errorsProtectionErrors2['default'].KEY_SYSTEM_ACCESS_DENIED_ERROR_CODE, _errorsProtectionErrors2['default'].KEY_SYSTEM_ACCESS_DENIED_ERROR_MESSAGE + 'Error selecting key system! -- ' + event.error) });
+                            eventBus.trigger(events.KEY_SYSTEM_SELECTED, {
+                                data: null,
+                                error: new _voDashJSError2['default'](_errorsProtectionErrors2['default'].KEY_SYSTEM_ACCESS_DENIED_ERROR_CODE, _errorsProtectionErrors2['default'].KEY_SYSTEM_ACCESS_DENIED_ERROR_MESSAGE + 'Error selecting key system! -- ' + event.error)
+                            });
                         }
                     }
                 };
@@ -1499,9 +1532,15 @@ function ProtectionController(config) {
             // TODO: Deprecated!
             url = protData.laURL;
         } else {
-            url = keySystem.getLicenseServerURLFromInitData(_CommonEncryption2['default'].getPSSHData(sessionToken.initData));
-            if (!url) {
-                url = e.data.laURL;
+            // For clearkey use the url defined in the manifest
+            if (protectionKeyController.isClearKey(keySystem)) {
+                url = keySystem.getLicenseServerUrlFromMediaInfo(mediaInfoArr);
+            } else {
+                var psshData = _CommonEncryption2['default'].getPSSHData(sessionToken.initData);
+                url = keySystem.getLicenseServerURLFromInitData(psshData);
+                if (!url) {
+                    url = e.data.laURL;
+                }
             }
         }
         // Possibly update or override the URL based on the message
@@ -1567,6 +1606,7 @@ function ProtectionController(config) {
             sendLicenseRequestCompleteEvent(eventData, new _voDashJSError2['default'](_errorsProtectionErrors2['default'].MEDIA_KEY_MESSAGE_LICENSER_ERROR_CODE, _errorsProtectionErrors2['default'].MEDIA_KEY_MESSAGE_LICENSER_ERROR_MESSAGE + keySystemString + ' update, XHR error. status is "' + xhr.statusText + '" (' + xhr.status + '), readyState is ' + xhr.readyState));
         };
 
+        //const reqPayload = keySystem.getLicenseRequestFromMessage(message);
         var reqPayload = keySystem.getLicenseRequestFromMessage(message);
         var reqMethod = licenseServerData.getHTTPMethod(messageType);
         var responseType = licenseServerData.getResponseType(keySystemString, messageType);
@@ -1712,7 +1752,7 @@ exports['default'] = dashjs.FactoryMaker.getClassFactory(ProtectionController);
 /* jshint ignore:line */
 module.exports = exports['default'];
 
-},{"13":13,"25":25,"26":26,"28":28,"4":4}],8:[function(_dereq_,module,exports){
+},{"13":13,"26":26,"27":27,"29":29,"4":4}],8:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -1775,11 +1815,15 @@ var _serversDRMToday = _dereq_(18);
 
 var _serversDRMToday2 = _interopRequireDefault(_serversDRMToday);
 
+var _serversThePlatform = _dereq_(20);
+
+var _serversThePlatform2 = _interopRequireDefault(_serversThePlatform);
+
 var _serversPlayReady = _dereq_(19);
 
 var _serversPlayReady2 = _interopRequireDefault(_serversPlayReady);
 
-var _serversWidevine = _dereq_(20);
+var _serversWidevine = _dereq_(21);
 
 var _serversWidevine2 = _interopRequireDefault(_serversWidevine);
 
@@ -1957,13 +2001,14 @@ function ProtectionKeyController() {
         var supportedKS = [];
 
         if (cps) {
+            var cencContentProtection = _CommonEncryption2['default'].findCencContentProtection(cps);
             for (ksIdx = 0; ksIdx < keySystems.length; ++ksIdx) {
                 ks = keySystems[ksIdx];
                 for (cpIdx = 0; cpIdx < cps.length; ++cpIdx) {
                     cp = cps[cpIdx];
                     if (cp.schemeIdUri.toLowerCase() === ks.schemeIdURI) {
                         // Look for DRM-specific ContentProtection
-                        var initData = ks.getInitData(cp);
+                        var initData = ks.getInitData(cp, cencContentProtection);
 
                         supportedKS.push({
                             ks: keySystems[ksIdx],
@@ -2036,6 +2081,7 @@ function ProtectionKeyController() {
      *
      */
     function getLicenseServer(keySystem, protData, messageType) {
+        console.log('ProtectionKeyController getLicenseServer', arguments);
 
         // Our default server implementations do not do anything with "license-release" or
         // "individualization-request" messages, so we just send a success event
@@ -2044,7 +2090,11 @@ function ProtectionKeyController() {
         }
 
         var licenseServerData = null;
-        if (protData && protData.hasOwnProperty('drmtoday')) {
+        if (protData && protData.hasOwnProperty('theplatform')) {
+            console.log(JSON.stringify(protData));
+            console.log('ProtectionKeyController.js::Its the platform');
+            licenseServerData = (0, _serversThePlatform2['default'])(context).getInstance({ tpData: protData.theplatform, BASE64: BASE64 });
+        } else if (protData && protData.hasOwnProperty('drmtoday')) {
             licenseServerData = (0, _serversDRMToday2['default'])(context).getInstance({ BASE64: BASE64 });
         } else if (keySystem.systemString === _constantsProtectionConstants2['default'].WIDEVINE_KEYSTEM_STRING) {
             licenseServerData = (0, _serversWidevine2['default'])(context).getInstance();
@@ -2118,7 +2168,7 @@ exports['default'] = dashjs.FactoryMaker.getSingletonFactory(ProtectionKeyContro
 /* jshint ignore:line */
 module.exports = exports['default'];
 
-},{"10":10,"11":11,"12":12,"17":17,"18":18,"19":19,"20":20,"3":3,"4":4,"9":9}],9:[function(_dereq_,module,exports){
+},{"10":10,"11":11,"12":12,"17":17,"18":18,"19":19,"20":20,"21":21,"3":3,"4":4,"9":9}],9:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -2158,11 +2208,11 @@ Object.defineProperty(exports, '__esModule', {
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { 'default': obj }; }
 
-var _voKeyPair = _dereq_(23);
+var _voKeyPair = _dereq_(24);
 
 var _voKeyPair2 = _interopRequireDefault(_voKeyPair);
 
-var _voClearKeyKeySet = _dereq_(21);
+var _voClearKeyKeySet = _dereq_(22);
 
 var _voClearKeyKeySet2 = _interopRequireDefault(_voClearKeyKeySet);
 
@@ -2183,6 +2233,10 @@ function KeySystemClearKey(config) {
     config = config || {};
     var instance = undefined;
     var BASE64 = config.BASE64;
+    var LICENSE_SERVER_MANIFEST_CONFIGURATIONS = {
+        attributes: ['Laurl', 'laurl'],
+        prefixes: ['clearkey', 'dashif']
+    };
 
     /**
      * Returns desired clearkeys (as specified in the CDM message) from protection data
@@ -2215,20 +2269,89 @@ function KeySystemClearKey(config) {
         return clearkeySet;
     }
 
-    function getInitData(cp) {
-        return _CommonEncryption2['default'].parseInitDataFromContentProtection(cp, BASE64);
+    function getInitData(cp, cencContentProtection) {
+        try {
+            var initData = _CommonEncryption2['default'].parseInitDataFromContentProtection(cp, BASE64);
+
+            if (!initData && cencContentProtection) {
+                var cencDefaultKid = cencDefaultKidToBase64Representation(cencContentProtection['cenc:default_KID']);
+                var data = { kids: [cencDefaultKid] };
+                initData = new TextEncoder().encode(JSON.stringify(data));
+            }
+
+            return initData;
+        } catch (e) {
+            return null;
+        }
+    }
+
+    function cencDefaultKidToBase64Representation(cencDefaultKid) {
+        try {
+            var kid = cencDefaultKid.replace(/-/g, '');
+            kid = btoa(kid.match(/\w{2}/g).map(function (a) {
+                return String.fromCharCode(parseInt(a, 16));
+            }).join(''));
+            return kid.replace(/=/g, '');
+        } catch (e) {
+            return null;
+        }
     }
 
     function getRequestHeadersFromMessage() /*message*/{
-        return null;
+        // Set content type to application/json by default
+        return {
+            'Content-Type': 'application/json'
+        };
     }
 
     function getLicenseRequestFromMessage(message) {
-        return new Uint8Array(message);
+        return JSON.parse(String.fromCharCode.apply(null, new Uint8Array(message)));
     }
 
     function getLicenseServerURLFromInitData() /*initData*/{
         return null;
+    }
+
+    function getLicenseServerUrlFromMediaInfo(mediaInfo) {
+        try {
+            if (!mediaInfo || mediaInfo.length === 0) {
+                return null;
+            }
+            var i = 0;
+            var licenseServer = null;
+            while (i < mediaInfo.length && !licenseServer) {
+                var info = mediaInfo[i];
+                if (info && info.contentProtection && info.contentProtection.length > 0) {
+                    var clearkeyProtData = info.contentProtection.filter(function (cp) {
+                        return cp.schemeIdUri && cp.schemeIdUri === schemeIdURI;
+                    });
+                    if (clearkeyProtData && clearkeyProtData.length > 0) {
+                        var j = 0;
+                        while (j < clearkeyProtData.length && !licenseServer) {
+                            var ckData = clearkeyProtData[j];
+                            var k = 0;
+                            while (k < LICENSE_SERVER_MANIFEST_CONFIGURATIONS.attributes.length && !licenseServer) {
+                                var l = 0;
+                                var attribute = LICENSE_SERVER_MANIFEST_CONFIGURATIONS.attributes[k];
+                                while (l < LICENSE_SERVER_MANIFEST_CONFIGURATIONS.prefixes.length && !licenseServer) {
+                                    var prefix = LICENSE_SERVER_MANIFEST_CONFIGURATIONS.prefixes[l];
+                                    if (ckData[attribute] && ckData[attribute].__prefix && ckData[attribute].__prefix === prefix && ckData[attribute].__text) {
+                                        licenseServer = ckData[attribute].__text;
+                                    }
+                                    l += 1;
+                                }
+                                k += 1;
+                            }
+                            j += 1;
+                        }
+                    }
+                }
+                i += 1;
+            }
+            return licenseServer;
+        } catch (e) {
+            return null;
+        }
     }
 
     function getCDMData() {
@@ -2249,6 +2372,7 @@ function KeySystemClearKey(config) {
         getLicenseServerURLFromInitData: getLicenseServerURLFromInitData,
         getCDMData: getCDMData,
         getSessionId: getSessionId,
+        getLicenseServerUrlFromMediaInfo: getLicenseServerUrlFromMediaInfo,
         getClearKeysFromProtectionData: getClearKeysFromProtectionData
     };
 
@@ -2260,7 +2384,7 @@ exports['default'] = dashjs.FactoryMaker.getSingletonFactory(KeySystemClearKey);
 /* jshint ignore:line */
 module.exports = exports['default'];
 
-},{"21":21,"23":23,"3":3,"4":4}],10:[function(_dereq_,module,exports){
+},{"22":22,"24":24,"3":3,"4":4}],10:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -2630,11 +2754,11 @@ Object.defineProperty(exports, '__esModule', {
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { 'default': obj }; }
 
-var _voKeyPair = _dereq_(23);
+var _voKeyPair = _dereq_(24);
 
 var _voKeyPair2 = _interopRequireDefault(_voKeyPair);
 
-var _voClearKeyKeySet = _dereq_(21);
+var _voClearKeyKeySet = _dereq_(22);
 
 var _voClearKeyKeySet2 = _interopRequireDefault(_voClearKeyKeySet);
 
@@ -2657,7 +2781,7 @@ function KeySystemW3CClearKey(config) {
     /**
      * Returns desired clearkeys (as specified in the CDM message) from protection data
      *
-     * @param {ProtectionData} protectionData the protection data
+     * @param {ProtectionDataSet} protectionData the protection data
      * @param {ArrayBuffer} message the ClearKey CDM message
      * @returns {ClearKeyKeySet} the key set or null if none found
      * @throws {Error} if a keyID specified in the CDM message was not found in the
@@ -2732,7 +2856,7 @@ exports['default'] = dashjs.FactoryMaker.getSingletonFactory(KeySystemW3CClearKe
 /* jshint ignore:line */
 module.exports = exports['default'];
 
-},{"21":21,"23":23,"3":3,"4":4}],12:[function(_dereq_,module,exports){
+},{"22":22,"24":24,"3":3,"4":4}],12:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -2793,27 +2917,63 @@ var schemeIdURI = 'urn:uuid:' + uuid;
 
 function KeySystemWidevine(config) {
 
+    function log() {
+        for (var _len = arguments.length, args = Array(_len), _key = 0; _key < _len; _key++) {
+            args[_key] = arguments[_key];
+        }
+
+        args.unshift('KeySystemWidevine');console.log.apply(console, args);
+    }
+
+    log('KeySystemWidevine: ' + JSON.stringify(config));
+
     config = config || {};
     var instance = undefined;
     var protData = null;
     var BASE64 = config.BASE64;
 
     function init(protectionData) {
+        log('init ' + JSON.stringify(protectionData));
         if (protectionData) {
             protData = protectionData;
         }
     }
 
     function getInitData(cp) {
+        log('getInitData ' + JSON.stringify(cp));
         return _CommonEncryption2['default'].parseInitDataFromContentProtection(cp, BASE64);
     }
 
-    function getRequestHeadersFromMessage() /*message*/{
-        return null;
+    function getRequestHeadersFromMessage(message) {
+        if (protData && protData.theplatform) {
+            log('getRequestHeadersFromMessage::message is::' + JSON.stringify(message));
+            var headers = {};
+            headers['Content-Type'] = 'application/json; charset=UTF-8';
+            return headers;
+        } else {
+            return null;
+        }
     }
 
     function getLicenseRequestFromMessage(message) {
-        return new Uint8Array(message);
+        log('getLicenseRequestFromMessage ' + JSON.stringify(message));
+        if (protData && protData.theplatform) {
+            var tp = protData.theplatform;
+            var widevineChallenge = _arrayBufferToBase64(message);
+            console.log('KeySystemWidevine.js::getLicenseRequestFromMessage::4');
+            var requestContents = {
+                'getWidevineLicense': {
+                    'releasePid': tp.releasePid,
+                    'widevineChallenge': widevineChallenge
+                }
+            };
+
+            log('getLicenseRequestFromMessage::requestContents is::' + JSON.stringify(requestContents));
+
+            return JSON.stringify(requestContents);
+        } else {
+            return new Uint8Array(message);
+        }
     }
 
     function getLicenseServerURLFromInitData() /*initData*/{
@@ -2825,6 +2985,7 @@ function KeySystemWidevine(config) {
     }
 
     function getSessionId(cp) {
+        log('getSessionId ' + JSON.stringify(cp));
         // Get sessionId from protectionData or from manifest
         if (protData && protData.sessionId) {
             return protData.sessionId;
@@ -2832,6 +2993,16 @@ function KeySystemWidevine(config) {
             return cp.sessionId;
         }
         return null;
+    }
+
+    function _arrayBufferToBase64(buffer) {
+        var binary = '';
+        var bytes = new Uint8Array(buffer);
+        var len = bytes.byteLength;
+        for (var i = 0; i < len; i++) {
+            binary += String.fromCharCode(bytes[i]);
+        }
+        return window.btoa(binary);
     }
 
     instance = {
@@ -3053,23 +3224,23 @@ var _controllersProtectionKeyController = _dereq_(8);
 
 var _controllersProtectionKeyController2 = _interopRequireDefault(_controllersProtectionKeyController);
 
-var _voNeedKey = _dereq_(27);
+var _voNeedKey = _dereq_(28);
 
 var _voNeedKey2 = _interopRequireDefault(_voNeedKey);
 
-var _voDashJSError = _dereq_(28);
+var _voDashJSError = _dereq_(29);
 
 var _voDashJSError2 = _interopRequireDefault(_voDashJSError);
 
-var _voKeyMessage = _dereq_(22);
+var _voKeyMessage = _dereq_(23);
 
 var _voKeyMessage2 = _interopRequireDefault(_voKeyMessage);
 
-var _voKeySystemConfiguration = _dereq_(25);
+var _voKeySystemConfiguration = _dereq_(26);
 
 var _voKeySystemConfiguration2 = _interopRequireDefault(_voKeySystemConfiguration);
 
-var _voKeySystemAccess = _dereq_(24);
+var _voKeySystemAccess = _dereq_(25);
 
 var _voKeySystemAccess2 = _interopRequireDefault(_voKeySystemAccess);
 
@@ -3461,7 +3632,7 @@ exports['default'] = dashjs.FactoryMaker.getClassFactory(ProtectionModel_01b);
 /* jshint ignore:line */
 module.exports = exports['default'];
 
-},{"13":13,"22":22,"24":24,"25":25,"27":27,"28":28,"8":8}],15:[function(_dereq_,module,exports){
+},{"13":13,"23":23,"25":25,"26":26,"28":28,"29":29,"8":8}],15:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -3513,7 +3684,7 @@ var _controllersProtectionKeyController = _dereq_(8);
 
 var _controllersProtectionKeyController2 = _interopRequireDefault(_controllersProtectionKeyController);
 
-var _voNeedKey = _dereq_(27);
+var _voNeedKey = _dereq_(28);
 
 var _voNeedKey2 = _interopRequireDefault(_voNeedKey);
 
@@ -3521,15 +3692,15 @@ var _errorsProtectionErrors = _dereq_(13);
 
 var _errorsProtectionErrors2 = _interopRequireDefault(_errorsProtectionErrors);
 
-var _voDashJSError = _dereq_(28);
+var _voDashJSError = _dereq_(29);
 
 var _voDashJSError2 = _interopRequireDefault(_voDashJSError);
 
-var _voKeyMessage = _dereq_(22);
+var _voKeyMessage = _dereq_(23);
 
 var _voKeyMessage2 = _interopRequireDefault(_voKeyMessage);
 
-var _voKeySystemAccess = _dereq_(24);
+var _voKeySystemAccess = _dereq_(25);
 
 var _voKeySystemAccess2 = _interopRequireDefault(_voKeySystemAccess);
 
@@ -3696,14 +3867,17 @@ function ProtectionModel_21Jan2015(config) {
 
         // Generate initial key request.
         // keyids type is used for clearkey when keys are provided directly in the protection data and then request to a license server is not needed
-        var dataType = ks.systemString === _constantsProtectionConstants2['default'].CLEARKEY_KEYSTEM_STRING && protData && protData.clearkeys ? 'keyids' : 'cenc';
+        var dataType = ks.systemString === _constantsProtectionConstants2['default'].CLEARKEY_KEYSTEM_STRING && (initData || protData && protData.clearkeys) ? 'keyids' : 'cenc';
         session.generateRequest(dataType, initData).then(function () {
             logger.debug('DRM: Session created.  SessionID = ' + sessionToken.getSessionID());
             eventBus.trigger(events.KEY_SESSION_CREATED, { data: sessionToken });
         })['catch'](function (error) {
             // TODO: Better error string
             removeSession(sessionToken);
-            eventBus.trigger(events.KEY_SESSION_CREATED, { data: null, error: new _voDashJSError2['default'](_errorsProtectionErrors2['default'].KEY_SESSION_CREATED_ERROR_CODE, _errorsProtectionErrors2['default'].KEY_SESSION_CREATED_ERROR_MESSAGE + 'Error generating key request -- ' + error.name) });
+            eventBus.trigger(events.KEY_SESSION_CREATED, {
+                data: null,
+                error: new _voDashJSError2['default'](_errorsProtectionErrors2['default'].KEY_SESSION_CREATED_ERROR_CODE, _errorsProtectionErrors2['default'].KEY_SESSION_CREATED_ERROR_MESSAGE + 'Error generating key request -- ' + error.name)
+            });
         });
     }
 
@@ -3742,11 +3916,17 @@ function ProtectionModel_21Jan2015(config) {
                 eventBus.trigger(events.KEY_SESSION_CREATED, { data: sessionToken });
             } else {
                 removeSession(sessionToken);
-                eventBus.trigger(events.KEY_SESSION_CREATED, { data: null, error: new _voDashJSError2['default'](_errorsProtectionErrors2['default'].KEY_SESSION_CREATED_ERROR_CODE, _errorsProtectionErrors2['default'].KEY_SESSION_CREATED_ERROR_MESSAGE + 'Could not load session! Invalid Session ID (' + sessionID + ')') });
+                eventBus.trigger(events.KEY_SESSION_CREATED, {
+                    data: null,
+                    error: new _voDashJSError2['default'](_errorsProtectionErrors2['default'].KEY_SESSION_CREATED_ERROR_CODE, _errorsProtectionErrors2['default'].KEY_SESSION_CREATED_ERROR_MESSAGE + 'Could not load session! Invalid Session ID (' + sessionID + ')')
+                });
             }
         })['catch'](function (error) {
             removeSession(sessionToken);
-            eventBus.trigger(events.KEY_SESSION_CREATED, { data: null, error: new _voDashJSError2['default'](_errorsProtectionErrors2['default'].KEY_SESSION_CREATED_ERROR_CODE, _errorsProtectionErrors2['default'].KEY_SESSION_CREATED_ERROR_MESSAGE + 'Could not load session (' + sessionID + ')! ' + error.name) });
+            eventBus.trigger(events.KEY_SESSION_CREATED, {
+                data: null,
+                error: new _voDashJSError2['default'](_errorsProtectionErrors2['default'].KEY_SESSION_CREATED_ERROR_CODE, _errorsProtectionErrors2['default'].KEY_SESSION_CREATED_ERROR_MESSAGE + 'Could not load session (' + sessionID + ')! ' + error.name)
+            });
         });
     }
 
@@ -3757,7 +3937,10 @@ function ProtectionModel_21Jan2015(config) {
             logger.debug('DRM: Session removed.  SessionID = ' + sessionToken.getSessionID());
             eventBus.trigger(events.KEY_SESSION_REMOVED, { data: sessionToken.getSessionID() });
         }, function (error) {
-            eventBus.trigger(events.KEY_SESSION_REMOVED, { data: null, error: 'Error removing session (' + sessionToken.getSessionID() + '). ' + error.name });
+            eventBus.trigger(events.KEY_SESSION_REMOVED, {
+                data: null,
+                error: 'Error removing session (' + sessionToken.getSessionID() + '). ' + error.name
+            });
         });
     }
 
@@ -3765,7 +3948,10 @@ function ProtectionModel_21Jan2015(config) {
         // Send our request to the key session
         closeKeySessionInternal(sessionToken)['catch'](function (error) {
             removeSession(sessionToken);
-            eventBus.trigger(events.KEY_SESSION_CLOSED, { data: null, error: 'Error closing session (' + sessionToken.getSessionID() + ') ' + error.name });
+            eventBus.trigger(events.KEY_SESSION_CLOSED, {
+                data: null,
+                error: 'Error closing session (' + sessionToken.getSessionID() + ') ' + error.name
+            });
         });
     }
 
@@ -3974,7 +4160,7 @@ exports['default'] = dashjs.FactoryMaker.getClassFactory(ProtectionModel_21Jan20
 /* jshint ignore:line */
 module.exports = exports['default'];
 
-},{"13":13,"22":22,"24":24,"27":27,"28":28,"3":3,"8":8}],16:[function(_dereq_,module,exports){
+},{"13":13,"23":23,"25":25,"28":28,"29":29,"3":3,"8":8}],16:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -4027,11 +4213,11 @@ var _controllersProtectionKeyController = _dereq_(8);
 
 var _controllersProtectionKeyController2 = _interopRequireDefault(_controllersProtectionKeyController);
 
-var _voNeedKey = _dereq_(27);
+var _voNeedKey = _dereq_(28);
 
 var _voNeedKey2 = _interopRequireDefault(_voNeedKey);
 
-var _voDashJSError = _dereq_(28);
+var _voDashJSError = _dereq_(29);
 
 var _voDashJSError2 = _interopRequireDefault(_voDashJSError);
 
@@ -4039,15 +4225,15 @@ var _errorsProtectionErrors = _dereq_(13);
 
 var _errorsProtectionErrors2 = _interopRequireDefault(_errorsProtectionErrors);
 
-var _voKeyMessage = _dereq_(22);
+var _voKeyMessage = _dereq_(23);
 
 var _voKeyMessage2 = _interopRequireDefault(_voKeyMessage);
 
-var _voKeySystemConfiguration = _dereq_(25);
+var _voKeySystemConfiguration = _dereq_(26);
 
 var _voKeySystemConfiguration2 = _interopRequireDefault(_voKeySystemConfiguration);
 
-var _voKeySystemAccess = _dereq_(24);
+var _voKeySystemAccess = _dereq_(25);
 
 var _voKeySystemAccess2 = _interopRequireDefault(_voKeySystemAccess);
 
@@ -4384,7 +4570,7 @@ exports['default'] = dashjs.FactoryMaker.getClassFactory(ProtectionModel_3Feb201
 /* jshint ignore:line */
 module.exports = exports['default'];
 
-},{"13":13,"22":22,"24":24,"25":25,"27":27,"28":28,"8":8}],17:[function(_dereq_,module,exports){
+},{"13":13,"23":23,"25":25,"26":26,"28":28,"29":29,"8":8}],17:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -4433,11 +4619,11 @@ Object.defineProperty(exports, '__esModule', {
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { 'default': obj }; }
 
-var _voKeyPair = _dereq_(23);
+var _voKeyPair = _dereq_(24);
 
 var _voKeyPair2 = _interopRequireDefault(_voKeyPair);
 
-var _voClearKeyKeySet = _dereq_(21);
+var _voClearKeyKeySet = _dereq_(22);
 
 var _voClearKeyKeySet2 = _interopRequireDefault(_voClearKeyKeySet);
 
@@ -4445,19 +4631,12 @@ function ClearKey() {
 
     var instance = undefined;
 
-    function getServerURLFromMessage(url, message /*, messageType*/) {
-        // Build ClearKey server query string
-        var jsonMsg = JSON.parse(String.fromCharCode.apply(null, new Uint8Array(message)));
-        url += '/?';
-        for (var i = 0; i < jsonMsg.kids.length; i++) {
-            url += jsonMsg.kids[i] + '&';
-        }
-        url = url.substring(0, url.length - 1);
+    function getServerURLFromMessage(url /* message, messageType*/) {
         return url;
     }
 
     function getHTTPMethod() /*messageType*/{
-        return 'GET';
+        return 'POST';
     }
 
     function getResponseType() /*keySystemStr*/{
@@ -4499,7 +4678,7 @@ exports['default'] = dashjs.FactoryMaker.getSingletonFactory(ClearKey);
 /* jshint ignore:line */
 module.exports = exports['default'];
 
-},{"21":21,"23":23}],18:[function(_dereq_,module,exports){
+},{"22":22,"24":24}],18:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -4778,6 +4957,105 @@ exports['default'] = dashjs.FactoryMaker.getSingletonFactory(PlayReady);
 module.exports = exports['default'];
 
 },{}],20:[function(_dereq_,module,exports){
+
+/**
+ * Modified CastLabs DRMToday License Server implementation
+ *
+ * @implements LicenseServer
+ * @class
+ */
+
+//import ProtectionConstants from '../../constants/ProtectionConstants';
+
+'use strict';
+
+Object.defineProperty(exports, '__esModule', {
+    value: true
+});
+function ThePlatform(config) {
+
+    function log() {
+        for (var _len = arguments.length, args = Array(_len), _key = 0; _key < _len; _key++) {
+            args[_key] = arguments[_key];
+        }
+
+        args.unshift('ThePlatform');console.log.apply(console, args);
+    }
+
+    log('ThePlatform', config);
+
+    config = config || {};
+    var BASE64 = config.BASE64;
+    var tpData = config.tpData || {};
+
+    var instance = undefined;
+
+    function checkConfig() {
+        log('checkConfig');
+        if (!BASE64 || !BASE64.hasOwnProperty('decodeArray')) {
+            throw new Error('Missing config parameter(s)');
+        }
+    }
+
+    function getServerURLFromMessage(url /*, message, messageType*/) {
+        console.log('getServerURLFromMessage', url);
+        // return url + '/wv/web/ModularDrm/getWidevineLicense?form=json&schema=1.0'
+        //     + '&_releasePid=' + config.releasePid
+        url = 'https://widevine.entitlement.theplatform.eu';
+        return url + '/wv/web/ModularDrm?form=json&schema=1.0' + '&account=' + encodeURIComponent(tpData.accountId) + '&token=' + encodeURIComponent(tpData.token);
+        // return url;
+    }
+
+    function getHTTPMethod() /*messageType*/{
+        return 'POST';
+    }
+
+    function getResponseType(keySystemStr /*, messageType*/) {
+        log('getResponseType', keySystemStr);
+        return 'json';
+    }
+
+    function getLicenseMessage(serverResponse, keySystemStr /*, messageType*/) {
+        log('getLicenseMessage', serverResponse, keySystemStr);
+        checkConfig();
+        var licenceValue = serverResponse.getWidevineLicenseResponse.license;
+        log('Widevine getLicenseMessage::licence value is::' + licenceValue);
+        var formattedResponse = _base64ToArrayBuffer(licenceValue);
+        return formattedResponse;
+    }
+
+    function getErrorResponse(serverResponse, keySystemStr /*, messageType*/) {
+        log('getErrorResponse', serverResponse, keySystemStr);
+        return serverResponse;
+    }
+
+    function _base64ToArrayBuffer(base64) {
+        var binary_string = window.atob(base64);
+        var len = binary_string.length;
+        var bytes = new Uint8Array(len);
+        for (var i = 0; i < len; i++) {
+            bytes[i] = binary_string.charCodeAt(i);
+        }
+        return bytes.buffer;
+    }
+
+    instance = {
+        getServerURLFromMessage: getServerURLFromMessage,
+        getHTTPMethod: getHTTPMethod,
+        getResponseType: getResponseType,
+        getLicenseMessage: getLicenseMessage,
+        getErrorResponse: getErrorResponse
+    };
+
+    return instance;
+}
+
+ThePlatform.__dashjs_factory_name = 'ThePlatform';
+exports['default'] = dashjs.FactoryMaker.getSingletonFactory(ThePlatform);
+/* jshint ignore:line */
+module.exports = exports['default'];
+
+},{}],21:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -4819,6 +5097,10 @@ Object.defineProperty(exports, '__esModule', {
 });
 function Widevine() {
 
+    function log(msg) {
+        console.log('Widevine.js::init', msg);
+    }
+
     var instance = undefined;
 
     function getServerURLFromMessage(url /*, message, messageType*/) {
@@ -4826,18 +5108,22 @@ function Widevine() {
     }
 
     function getHTTPMethod() /*messageType*/{
-        return 'POST';
+        //log('Widevine.js::getHTTPMethod', keySystemStr);
+        return 'GET';
     }
 
     function getResponseType() /*keySystemStr, messageType*/{
-        return 'arraybuffer';
+        // log('Widevine.js::getResponseType', keySystemStr);
+        return 'json';
     }
 
     function getLicenseMessage(serverResponse /*, keySystemStr, messageType*/) {
+        log('getLicenseMessage:' + serverResponse);
         return serverResponse;
     }
 
     function getErrorResponse(serverResponse /*, keySystemStr, messageType*/) {
+        log('getErrorResponse:' + serverResponse);
         return String.fromCharCode.apply(null, new Uint8Array(serverResponse));
     }
 
@@ -4857,7 +5143,7 @@ exports['default'] = dashjs.FactoryMaker.getSingletonFactory(Widevine);
 /* jshint ignore:line */
 module.exports = exports['default'];
 
-},{}],21:[function(_dereq_,module,exports){
+},{}],22:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -4963,7 +5249,7 @@ var ClearKeyKeySet = (function () {
 exports['default'] = ClearKeyKeySet;
 module.exports = exports['default'];
 
-},{}],22:[function(_dereq_,module,exports){
+},{}],23:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -5028,7 +5314,7 @@ function KeyMessage(sessionToken, message, defaultURL, messageType) {
 exports['default'] = KeyMessage;
 module.exports = exports['default'];
 
-},{}],23:[function(_dereq_,module,exports){
+},{}],24:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -5088,7 +5374,7 @@ function KeyPair(keyID, key) {
 exports["default"] = KeyPair;
 module.exports = exports["default"];
 
-},{}],24:[function(_dereq_,module,exports){
+},{}],25:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -5152,7 +5438,7 @@ function KeySystemAccess(keySystem, ksConfiguration) {
 exports["default"] = KeySystemAccess;
 module.exports = exports["default"];
 
-},{}],25:[function(_dereq_,module,exports){
+},{}],26:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -5231,7 +5517,7 @@ function KeySystemConfiguration(audioCapabilities, videoCapabilities, distinctiv
 exports['default'] = KeySystemConfiguration;
 module.exports = exports['default'];
 
-},{}],26:[function(_dereq_,module,exports){
+},{}],27:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -5291,7 +5577,7 @@ function MediaCapability(contentType, robustness) {
 exports["default"] = MediaCapability;
 module.exports = exports["default"];
 
-},{}],27:[function(_dereq_,module,exports){
+},{}],28:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -5350,7 +5636,7 @@ function NeedKey(initData, initDataType) {
 exports["default"] = NeedKey;
 module.exports = exports["default"];
 
-},{}],28:[function(_dereq_,module,exports){
+},{}],29:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor

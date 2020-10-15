@@ -715,6 +715,269 @@ var bigInt = (function (undefined) {
  *  POSSIBILITY OF SUCH DAMAGE.
  */
 /**
+ * @module FactoryMaker
+ * @ignore
+ */
+"use strict";
+
+Object.defineProperty(exports, "__esModule", {
+    value: true
+});
+var FactoryMaker = (function () {
+
+    var instance = undefined;
+    var singletonContexts = [];
+    var singletonFactories = {};
+    var classFactories = {};
+
+    function extend(name, childInstance, override, context) {
+        if (!context[name] && childInstance) {
+            context[name] = {
+                instance: childInstance,
+                override: override
+            };
+        }
+    }
+
+    /**
+     * Use this method from your extended object.  this.factory is injected into your object.
+     * this.factory.getSingletonInstance(this.context, 'VideoModel')
+     * will return the video model for use in the extended object.
+     *
+     * @param {Object} context - injected into extended object as this.context
+     * @param {string} className - string name found in all dash.js objects
+     * with name __dashjs_factory_name Will be at the bottom. Will be the same as the object's name.
+     * @returns {*} Context aware instance of specified singleton name.
+     * @memberof module:FactoryMaker
+     * @instance
+     */
+    function getSingletonInstance(context, className) {
+        for (var i in singletonContexts) {
+            var obj = singletonContexts[i];
+            if (obj.context === context && obj.name === className) {
+                return obj.instance;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Use this method to add an singleton instance to the system.  Useful for unit testing to mock objects etc.
+     *
+     * @param {Object} context
+     * @param {string} className
+     * @param {Object} instance
+     * @memberof module:FactoryMaker
+     * @instance
+     */
+    function setSingletonInstance(context, className, instance) {
+        for (var i in singletonContexts) {
+            var obj = singletonContexts[i];
+            if (obj.context === context && obj.name === className) {
+                singletonContexts[i].instance = instance;
+                return;
+            }
+        }
+        singletonContexts.push({
+            name: className,
+            context: context,
+            instance: instance
+        });
+    }
+
+    /*------------------------------------------------------------------------------------------*/
+
+    // Factories storage Management
+
+    /*------------------------------------------------------------------------------------------*/
+
+    function getFactoryByName(name, factoriesArray) {
+        return factoriesArray[name];
+    }
+
+    function updateFactory(name, factory, factoriesArray) {
+        if (name in factoriesArray) {
+            factoriesArray[name] = factory;
+        }
+    }
+
+    /*------------------------------------------------------------------------------------------*/
+
+    // Class Factories Management
+
+    /*------------------------------------------------------------------------------------------*/
+
+    function updateClassFactory(name, factory) {
+        updateFactory(name, factory, classFactories);
+    }
+
+    function getClassFactoryByName(name) {
+        return getFactoryByName(name, classFactories);
+    }
+
+    function getClassFactory(classConstructor) {
+        var factory = getFactoryByName(classConstructor.__dashjs_factory_name, classFactories);
+
+        if (!factory) {
+            factory = function (context) {
+                if (context === undefined) {
+                    context = {};
+                }
+                return {
+                    create: function create() {
+                        return merge(classConstructor, context, arguments);
+                    }
+                };
+            };
+
+            classFactories[classConstructor.__dashjs_factory_name] = factory; // store factory
+        }
+        return factory;
+    }
+
+    /*------------------------------------------------------------------------------------------*/
+
+    // Singleton Factory MAangement
+
+    /*------------------------------------------------------------------------------------------*/
+
+    function updateSingletonFactory(name, factory) {
+        updateFactory(name, factory, singletonFactories);
+    }
+
+    function getSingletonFactoryByName(name) {
+        return getFactoryByName(name, singletonFactories);
+    }
+
+    function getSingletonFactory(classConstructor) {
+        var factory = getFactoryByName(classConstructor.__dashjs_factory_name, singletonFactories);
+        if (!factory) {
+            factory = function (context) {
+                var instance = undefined;
+                if (context === undefined) {
+                    context = {};
+                }
+                return {
+                    getInstance: function getInstance() {
+                        // If we don't have an instance yet check for one on the context
+                        if (!instance) {
+                            instance = getSingletonInstance(context, classConstructor.__dashjs_factory_name);
+                        }
+                        // If there's no instance on the context then create one
+                        if (!instance) {
+                            instance = merge(classConstructor, context, arguments);
+                            singletonContexts.push({
+                                name: classConstructor.__dashjs_factory_name,
+                                context: context,
+                                instance: instance
+                            });
+                        }
+                        return instance;
+                    }
+                };
+            };
+            singletonFactories[classConstructor.__dashjs_factory_name] = factory; // store factory
+        }
+
+        return factory;
+    }
+
+    function merge(classConstructor, context, args) {
+
+        var classInstance = undefined;
+        var className = classConstructor.__dashjs_factory_name;
+        var extensionObject = context[className];
+
+        if (extensionObject) {
+
+            var extension = extensionObject.instance;
+
+            if (extensionObject.override) {
+                //Override public methods in parent but keep parent.
+
+                classInstance = classConstructor.apply({ context: context }, args);
+                extension = extension.apply({
+                    context: context,
+                    factory: instance,
+                    parent: classInstance
+                }, args);
+
+                for (var prop in extension) {
+                    if (classInstance.hasOwnProperty(prop)) {
+                        classInstance[prop] = extension[prop];
+                    }
+                }
+            } else {
+                //replace parent object completely with new object. Same as dijon.
+
+                return extension.apply({
+                    context: context,
+                    factory: instance
+                }, args);
+            }
+        } else {
+            // Create new instance of the class
+            classInstance = classConstructor.apply({ context: context }, args);
+        }
+
+        // Add getClassName function to class instance prototype (used by Debug)
+        classInstance.getClassName = function () {
+            return className;
+        };
+
+        return classInstance;
+    }
+
+    instance = {
+        extend: extend,
+        getSingletonInstance: getSingletonInstance,
+        setSingletonInstance: setSingletonInstance,
+        getSingletonFactory: getSingletonFactory,
+        getSingletonFactoryByName: getSingletonFactoryByName,
+        updateSingletonFactory: updateSingletonFactory,
+        getClassFactory: getClassFactory,
+        getClassFactoryByName: getClassFactoryByName,
+        updateClassFactory: updateClassFactory
+    };
+
+    return instance;
+})();
+
+exports["default"] = FactoryMaker;
+module.exports = exports["default"];
+
+},{}],3:[function(_dereq_,module,exports){
+/**
+ * The copyright in this software is being made available under the BSD License,
+ * included below. This software may be subject to other third party and contributor
+ * rights, including patent rights, and no such rights are granted under this license.
+ *
+ * Copyright (c) 2013, Dash Industry Forum.
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without modification,
+ * are permitted provided that the following conditions are met:
+ *  * Redistributions of source code must retain the above copyright notice, this
+ *  list of conditions and the following disclaimer.
+ *  * Redistributions in binary form must reproduce the above copyright notice,
+ *  this list of conditions and the following disclaimer in the documentation and/or
+ *  other materials provided with the distribution.
+ *  * Neither the name of Dash Industry Forum nor the names of its
+ *  contributors may be used to endorse or promote products derived from this software
+ *  without specific prior written permission.
+ *
+ *  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS AS IS AND ANY
+ *  EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+ *  WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+ *  IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT,
+ *  INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
+ *  NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
+ *  PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+ *  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ *  ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+ *  POSSIBILITY OF SUCH DAMAGE.
+ */
+/**
  * @class
  * @ignore
  */
@@ -755,7 +1018,7 @@ var ErrorsBase = (function () {
 exports['default'] = ErrorsBase;
 module.exports = exports['default'];
 
-},{}],3:[function(_dereq_,module,exports){
+},{}],4:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -827,74 +1090,7 @@ var EventsBase = (function () {
 exports['default'] = EventsBase;
 module.exports = exports['default'];
 
-},{}],4:[function(_dereq_,module,exports){
-/**
- * The copyright in this software is being made available under the BSD License,
- * included below. This software may be subject to other third party and contributor
- * rights, including patent rights, and no such rights are granted under this license.
- *
- * Copyright (c) 2013, Dash Industry Forum.
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without modification,
- * are permitted provided that the following conditions are met:
- *  * Redistributions of source code must retain the above copyright notice, this
- *  list of conditions and the following disclaimer.
- *  * Redistributions in binary form must reproduce the above copyright notice,
- *  this list of conditions and the following disclaimer in the documentation and/or
- *  other materials provided with the distribution.
- *  * Neither the name of Dash Industry Forum nor the names of its
- *  contributors may be used to endorse or promote products derived from this software
- *  without specific prior written permission.
- *
- *  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS AS IS AND ANY
- *  EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
- *  WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
- *  IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT,
- *  INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
- *  NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
- *  PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
- *  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- *  ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
- *  POSSIBILITY OF SUCH DAMAGE.
- */
-'use strict';
-
-Object.defineProperty(exports, '__esModule', {
-    value: true
-});
-
-var _get = function get(_x, _x2, _x3) { var _again = true; _function: while (_again) { var object = _x, property = _x2, receiver = _x3; _again = false; if (object === null) object = Function.prototype; var desc = Object.getOwnPropertyDescriptor(object, property); if (desc === undefined) { var parent = Object.getPrototypeOf(object); if (parent === null) { return undefined; } else { _x = parent; _x2 = property; _x3 = receiver; _again = true; desc = parent = undefined; continue _function; } } else if ('value' in desc) { return desc.value; } else { var getter = desc.get; if (getter === undefined) { return undefined; } return getter.call(receiver); } } };
-
-function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { 'default': obj }; }
-
-function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError('Cannot call a class as a function'); } }
-
-function _inherits(subClass, superClass) { if (typeof superClass !== 'function' && superClass !== null) { throw new TypeError('Super expression must either be null or a function, not ' + typeof superClass); } subClass.prototype = Object.create(superClass && superClass.prototype, { constructor: { value: subClass, enumerable: false, writable: true, configurable: true } }); if (superClass) Object.setPrototypeOf ? Object.setPrototypeOf(subClass, superClass) : subClass.__proto__ = superClass; }
-
-var _coreEventsEventsBase = _dereq_(3);
-
-var _coreEventsEventsBase2 = _interopRequireDefault(_coreEventsEventsBase);
-
-var MssEvents = (function (_EventsBase) {
-    _inherits(MssEvents, _EventsBase);
-
-    function MssEvents() {
-        _classCallCheck(this, MssEvents);
-
-        _get(Object.getPrototypeOf(MssEvents.prototype), 'constructor', this).call(this);
-
-        this.FRAGMENT_INFO_LOADING_COMPLETED = 'fragmentInfoLoadingCompleted';
-    }
-
-    return MssEvents;
-})(_coreEventsEventsBase2['default']);
-
-var mssEvents = new MssEvents();
-exports['default'] = mssEvents;
-module.exports = exports['default'];
-
-},{"3":3}],5:[function(_dereq_,module,exports){
+},{}],5:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -934,38 +1130,25 @@ Object.defineProperty(exports, '__esModule', {
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { 'default': obj }; }
 
-var _MssEvents = _dereq_(4);
-
-var _MssEvents2 = _interopRequireDefault(_MssEvents);
-
-var _MssFragmentMoofProcessor = _dereq_(6);
-
-var _MssFragmentMoofProcessor2 = _interopRequireDefault(_MssFragmentMoofProcessor);
-
-var _streamingVoFragmentRequest = _dereq_(16);
+var _streamingVoFragmentRequest = _dereq_(17);
 
 var _streamingVoFragmentRequest2 = _interopRequireDefault(_streamingVoFragmentRequest);
 
 function MssFragmentInfoController(config) {
 
     config = config || {};
-    var context = this.context;
 
     var instance = undefined,
         logger = undefined,
         fragmentModel = undefined,
         started = undefined,
         type = undefined,
-        bufferTimeout = undefined,
+        loadFragmentTimeout = undefined,
         startTime = undefined,
         startFragmentTime = undefined,
         index = undefined;
 
     var streamProcessor = config.streamProcessor;
-    var eventBus = config.eventBus;
-    var dashMetrics = config.dashMetrics;
-    var playbackController = config.playbackController;
-    var ISOBoxer = config.ISOBoxer;
     var baseURLController = config.baseURLController;
     var debug = config.debug;
     var controllerType = 'MssFragmentInfoController';
@@ -975,25 +1158,18 @@ function MssFragmentInfoController(config) {
     }
 
     function initialize() {
-        started = false;
-
-        startTime = null;
-        startFragmentTime = null;
-
-        // Register to StreamProcessor as external controller
-        streamProcessor.registerExternalController(instance);
         type = streamProcessor.getType();
         fragmentModel = streamProcessor.getFragmentModel();
+
+        started = false;
+        startTime = null;
+        startFragmentTime = null;
     }
 
-    function doStart() {
-        if (started === true) {
-            return;
-        }
+    function start() {
+        if (started) return;
 
-        logger.debug('Do start');
-
-        eventBus.on(_MssEvents2['default'].FRAGMENT_INFO_LOADING_COMPLETED, onFragmentInfoLoadedCompleted, instance);
+        logger.debug('Start');
 
         started = true;
         startTime = new Date().getTime();
@@ -1002,32 +1178,23 @@ function MssFragmentInfoController(config) {
         loadNextFragmentInfo();
     }
 
-    function doStop() {
-        if (!started) {
-            return;
-        }
-        logger.debug('Do stop');
+    function stop() {
+        if (!started) return;
 
-        eventBus.off(_MssEvents2['default'].FRAGMENT_INFO_LOADING_COMPLETED, onFragmentInfoLoadedCompleted, instance);
+        logger.debug('Stop');
 
-        // Stop buffering process
-        clearTimeout(bufferTimeout);
+        clearTimeout(loadFragmentTimeout);
         started = false;
-
         startTime = null;
         startFragmentTime = null;
     }
 
     function reset() {
-        doStop();
-        streamProcessor.unregisterExternalController(instance);
+        stop();
     }
 
     function loadNextFragmentInfo() {
-        // Check if running state
-        if (!started) {
-            return;
-        }
+        if (!started) return;
 
         // Get last segment from SegmentTimeline
         var representation = getCurrentRepresentation();
@@ -1036,21 +1203,13 @@ function MssFragmentInfoController(config) {
         var segments = adaptation.SegmentTemplate.SegmentTimeline.S_asArray;
         var segment = segments[segments.length - 1];
 
-        logger.debug('Last fragment time: ' + segment.t / adaptation.SegmentTemplate.timescale);
+        // logger.debug('Last fragment time: ' + (segment.t / adaptation.SegmentTemplate.timescale));
 
         // Generate segment request
         var request = getRequestForSegment(adaptation, representation, segment);
 
         // Send segment request
         requestFragment.call(this, request);
-    }
-
-    function delayLoadNextFragmentInfo(delay) {
-        clearTimeout(bufferTimeout);
-        bufferTimeout = setTimeout(function () {
-            bufferTimeout = null;
-            loadNextFragmentInfo();
-        }, delay * 1000);
     }
 
     function getRequestForSegment(adaptation, representation, segment) {
@@ -1082,59 +1241,51 @@ function MssFragmentInfoController(config) {
     function getCurrentRepresentation() {
         var representationController = streamProcessor.getRepresentationController();
         var representation = representationController.getCurrentRepresentation();
-
         return representation;
     }
 
     function requestFragment(request) {
-
-        logger.debug('Load fragment for time: ' + request.startTime);
+        // logger.debug('Load FragmentInfo for time: ' + request.startTime);
         if (streamProcessor.getFragmentModel().isFragmentLoadedOrPending(request)) {
             // We may have reached end of timeline in case of start-over streams
-            logger.debug('No more fragments');
+            logger.debug('End of timeline');
+            stop();
             return;
         }
 
         fragmentModel.executeRequest(request);
     }
 
-    function onFragmentInfoLoadedCompleted(e) {
-        if (e.streamProcessor !== streamProcessor) {
-            return;
-        }
+    function fragmentInfoLoaded(e) {
+        if (!started) return;
 
-        var request = e.fragmentInfo.request;
-        if (!e.fragmentInfo.response) {
+        var request = e.request;
+        if (!e.response) {
             logger.error('Load error', request.url);
             return;
         }
 
         var deltaFragmentTime = undefined,
-            deltaTime = undefined;
+            deltaTime = undefined,
+            delay = undefined;
 
-        logger.debug('FragmentInfo loaded: ', request.url);
+        // logger.debug('FragmentInfo loaded: ', request.url);
 
         if (!startFragmentTime) {
             startFragmentTime = request.startTime;
         }
 
-        try {
-            // Process FramgentInfo in order to update segment timeline (DVR window)
-            var mssFragmentMoofProcessor = (0, _MssFragmentMoofProcessor2['default'])(context).create({
-                dashMetrics: dashMetrics,
-                playbackController: playbackController,
-                ISOBoxer: ISOBoxer,
-                eventBus: eventBus,
-                debug: debug
-            });
-            mssFragmentMoofProcessor.updateSegmentList(e.fragmentInfo, streamProcessor);
+        // Determine delay before requesting next FragmentInfo
+        deltaTime = (new Date().getTime() - startTime) / 1000;
+        deltaFragmentTime = request.startTime + request.duration - startFragmentTime;
+        delay = Math.max(0, deltaFragmentTime - deltaTime);
 
-            deltaTime = (new Date().getTime() - startTime) / 1000;
-            deltaFragmentTime = request.startTime + request.duration - startFragmentTime;
-            delayLoadNextFragmentInfo(Math.max(0, deltaFragmentTime - deltaTime));
-        } catch (e) {
-            logger.fatal('Internal error while processing fragment info segment ');
-        }
+        // Set timeout for requesting next FragmentInfo
+        clearTimeout(loadFragmentTimeout);
+        loadFragmentTimeout = setTimeout(function () {
+            loadFragmentTimeout = null;
+            loadNextFragmentInfo();
+        }, delay * 1000);
     }
 
     function getType() {
@@ -1144,7 +1295,8 @@ function MssFragmentInfoController(config) {
     instance = {
         initialize: initialize,
         controllerType: controllerType,
-        start: doStart,
+        start: start,
+        fragmentInfoLoaded: fragmentInfoLoaded,
         getType: getType,
         reset: reset
     };
@@ -1159,7 +1311,7 @@ exports['default'] = dashjs.FactoryMaker.getClassFactory(MssFragmentInfoControll
 /* jshint ignore:line */
 module.exports = exports['default'];
 
-},{"16":16,"4":4,"6":6}],6:[function(_dereq_,module,exports){
+},{"17":17}],6:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -1198,7 +1350,7 @@ Object.defineProperty(exports, '__esModule', {
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { 'default': obj }; }
 
-var _streamingVoDashJSError = _dereq_(14);
+var _streamingVoDashJSError = _dereq_(15);
 
 var _streamingVoDashJSError2 = _interopRequireDefault(_streamingVoDashJSError);
 
@@ -1243,6 +1395,7 @@ function MssFragmentMoofProcessor(config) {
 
         type = streamProcessor.getType();
 
+        // Process tfrf only for live streams or start-over static streams (timeShiftBufferDepth > 0)
         if (manifest.type !== 'dynamic' && !manifest.timeShiftBufferDepth) {
             return;
         }
@@ -1279,16 +1432,15 @@ function MssFragmentMoofProcessor(config) {
             }
         }
 
-        logger.debug('entry - t = ', entry.fragment_absolute_time / timescale);
+        // logger.debug('entry - t = ', (entry.fragment_absolute_time / timescale));
 
         // Get last segment time
         segmentTime = segments[segments.length - 1].tManifest ? parseFloat(segments[segments.length - 1].tManifest) : segments[segments.length - 1].t;
-        logger.debug('Last segment - t = ', segmentTime / timescale);
+        // logger.debug('Last segment - t = ', (segmentTime / timescale));
 
         // Check if we have to append new segment to timeline
         if (entry.fragment_absolute_time <= segmentTime) {
-            // Update DVR window range
-            // => set range end to end time of current segment
+            // Update DVR window range => set range end to end time of current segment
             range = {
                 start: segments[0].t / timescale,
                 end: tfdt.baseMediaDecodeTime / timescale + request.duration
@@ -1298,7 +1450,7 @@ function MssFragmentMoofProcessor(config) {
             return;
         }
 
-        logger.debug('Add new segment - t = ', entry.fragment_absolute_time / timescale);
+        // logger.debug('Add new segment - t = ', (entry.fragment_absolute_time / timescale));
         segment = {};
         segment.t = entry.fragment_absolute_time;
         segment.d = entry.fragment_duration;
@@ -1332,7 +1484,7 @@ function MssFragmentMoofProcessor(config) {
                 // Remove segments prior to availability start time
                 segment = segments[0];
                 while (Math.round(segment.t / timescale) < availabilityStartTime) {
-                    logger.debug('Remove segment  - t = ' + segment.t / timescale);
+                    // logger.debug('Remove segment  - t = ' + (segment.t / timescale));
                     segments.splice(0, 1);
                     segment = segments[0];
                 }
@@ -1352,7 +1504,7 @@ function MssFragmentMoofProcessor(config) {
     function updateDVR(type, range, manifestInfo) {
         var dvrInfos = dashMetrics.getCurrentDVRInfo(type);
         if (!dvrInfos || range.end > dvrInfos.range.end) {
-            logger.debug('Update DVR Infos [' + range.start + ' - ' + range.end + ']');
+            logger.debug('Update DVR range: [' + range.start + ' - ' + range.end + ']');
             dashMetrics.addDVRInfo(type, playbackController.getTime(), manifestInfo, range);
         }
     }
@@ -1371,7 +1523,7 @@ function MssFragmentMoofProcessor(config) {
         return offset;
     }
 
-    function convertFragment(e, sp) {
+    function convertFragment(e, streamProcessor) {
         var i = undefined;
 
         // e.request contains request description object
@@ -1401,7 +1553,7 @@ function MssFragmentMoofProcessor(config) {
             tfxd = null;
         }
         var tfrf = isoFile.fetch('tfrf');
-        processTfrf(e.request, tfrf, tfdt, sp);
+        processTfrf(e.request, tfrf, tfdt, streamProcessor);
         if (tfrf) {
             tfrf._parent.boxes.splice(tfrf._parent.boxes.indexOf(tfrf), 1);
             tfrf = null;
@@ -1467,7 +1619,7 @@ function MssFragmentMoofProcessor(config) {
         e.response = isoFile.write();
     }
 
-    function updateSegmentList(e, sp) {
+    function updateSegmentList(e, streamProcessor) {
         // e.request contains request description object
         // e.response contains fragment bytes
         if (!e.response) {
@@ -1490,7 +1642,7 @@ function MssFragmentMoofProcessor(config) {
         }
 
         var tfrf = isoFile.fetch('tfrf');
-        processTfrf(e.request, tfrf, tfdt, sp);
+        processTfrf(e.request, tfrf, tfdt, streamProcessor);
         if (tfrf) {
             tfrf._parent.boxes.splice(tfrf._parent.boxes.indexOf(tfrf), 1);
             tfrf = null;
@@ -1516,7 +1668,7 @@ exports['default'] = dashjs.FactoryMaker.getClassFactory(MssFragmentMoofProcesso
 /* jshint ignore:line */
 module.exports = exports['default'];
 
-},{"10":10,"13":13,"14":14}],7:[function(_dereq_,module,exports){
+},{"10":10,"13":13,"15":15}],7:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -1683,7 +1835,7 @@ function MssFragmentMoovProcessor(config) {
         mvhd.creation_time = 0; // the creation time of the presentation => ignore (set to 0)
         mvhd.modification_time = 0; // the most recent time the presentation was modified => ignore (set to 0)
         mvhd.timescale = timescale; // the time-scale for the entire presentation => 10000000 for MSS
-        mvhd.duration = Math.round(period.duration * timescale); // the length of the presentation (in the indicated timescale) =>  take duration of period
+        mvhd.duration = period.duration === Infinity ? 0xFFFFFFFFFFFFFFFF : Math.round(period.duration * timescale); // the length of the presentation (in the indicated timescale) =>  take duration of period
         mvhd.rate = 1.0; // 16.16 number, '1.0' = normal playback
         mvhd.volume = 1.0; // 8.8 number, '1.0' = full volume
         mvhd.reserved1 = 0;
@@ -1710,7 +1862,7 @@ function MssFragmentMoovProcessor(config) {
         tkhd.modification_time = 0; // the most recent time the presentation was modified => ignore (set to 0)
         tkhd.track_ID = trackId; // uniquely identifies this track over the entire life-time of this presentation
         tkhd.reserved1 = 0;
-        tkhd.duration = Math.round(period.duration * timescale); // the duration of this track (in the timescale indicated in the Movie Header Box) =>  take duration of period
+        tkhd.duration = period.duration === Infinity ? 0xFFFFFFFFFFFFFFFF : Math.round(period.duration * timescale); // the duration of this track (in the timescale indicated in the Movie Header Box) =>  take duration of period
         tkhd.reserved2 = [0x0, 0x0];
         tkhd.layer = 0; // specifies the front-to-back ordering of video tracks; tracks with lower numbers are closer to the viewer => 0 since only one video track
         tkhd.alternate_group = 0; // specifies a group or collection of tracks => ignore
@@ -1734,8 +1886,8 @@ function MssFragmentMoovProcessor(config) {
         mdhd.creation_time = 0; // the creation time of the presentation => ignore (set to 0)
         mdhd.modification_time = 0; // the most recent time the presentation was modified => ignore (set to 0)
         mdhd.timescale = timescale; // the time-scale for the entire presentation
-        mdhd.duration = Math.round(period.duration * timescale); // the duration of this media (in the scale of the timescale). If the duration cannot be determined then duration is set to all 1s.
-        mdhd.language = adaptationSet.lang || 'und'; // declares the language code for this media (see getLanguageCode())
+        mdhd.duration = period.duration === Infinity ? 0xFFFFFFFFFFFFFFFF : Math.round(period.duration * timescale); // the duration of this media (in the scale of the timescale). If the duration cannot be determined then duration is set to all 1s.
+        mdhd.language = adaptationSet.lang || 'und'; // declares the language code for this media
         mdhd.pre_defined = 0;
 
         return mdhd;
@@ -2226,10 +2378,6 @@ var _MssFragmentMoovProcessor = _dereq_(7);
 
 var _MssFragmentMoovProcessor2 = _interopRequireDefault(_MssFragmentMoovProcessor);
 
-var _MssEvents = _dereq_(4);
-
-var _MssEvents2 = _interopRequireDefault(_MssEvents);
-
 // Add specific box processors not provided by codem-isoboxer library
 
 function arrayEqual(arr1, arr2) {
@@ -2333,8 +2481,10 @@ function MssFragmentProcessor(config) {
         ISOBoxer.addBoxProcessor('saiz', saizProcessor);
         ISOBoxer.addBoxProcessor('senc', sencProcessor);
 
-        mssFragmentMoovProcessor = (0, _MssFragmentMoovProcessor2['default'])(context).create({ protectionController: protectionController,
-            constants: config.constants, ISOBoxer: ISOBoxer });
+        mssFragmentMoovProcessor = (0, _MssFragmentMoovProcessor2['default'])(context).create({
+            protectionController: protectionController,
+            constants: config.constants,
+            ISOBoxer: ISOBoxer });
 
         mssFragmentMoofProcessor = (0, _MssFragmentMoofProcessor2['default'])(context).create({
             dashMetrics: dashMetrics,
@@ -2350,25 +2500,19 @@ function MssFragmentProcessor(config) {
         return mssFragmentMoovProcessor.generateMoov(rep);
     }
 
-    function processFragment(e, sp) {
+    function processFragment(e, streamProcessor) {
         if (!e || !e.request || !e.response) {
             throw new Error('e parameter is missing or malformed');
         }
 
-        var request = e.request;
+        if (e.request.type === 'MediaSegment') {
+            // MediaSegment => convert to Smooth Streaming moof format
+            mssFragmentMoofProcessor.convertFragment(e, streamProcessor);
+        } else if (e.request.type === 'FragmentInfoSegment') {
+            // FragmentInfo (live) => update segments list
+            mssFragmentMoofProcessor.updateSegmentList(e, streamProcessor);
 
-        if (request.type === 'MediaSegment') {
-            // it's a MediaSegment, let's convert fragment
-            mssFragmentMoofProcessor.convertFragment(e, sp);
-        } else if (request.type === 'FragmentInfoSegment') {
-
-            // it's a FragmentInfo, ask relative fragment info controller to handle it
-            eventBus.trigger(_MssEvents2['default'].FRAGMENT_INFO_LOADING_COMPLETED, {
-                fragmentInfo: e,
-                streamProcessor: sp
-            });
-
-            // Change the sender value to stop event to be propagated (fragment info must not be added to buffer)
+            // Stop event propagation (FragmentInfo must not be added to buffer)
             e.sender = null;
         }
     }
@@ -2388,7 +2532,7 @@ exports['default'] = dashjs.FactoryMaker.getClassFactory(MssFragmentProcessor);
 /* jshint ignore:line */
 module.exports = exports['default'];
 
-},{"4":4,"6":6,"7":7}],9:[function(_dereq_,module,exports){
+},{"6":6,"7":7}],9:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -2428,11 +2572,11 @@ Object.defineProperty(exports, '__esModule', {
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { 'default': obj }; }
 
-var _streamingVoDataChunk = _dereq_(15);
+var _streamingVoDataChunk = _dereq_(16);
 
 var _streamingVoDataChunk2 = _interopRequireDefault(_streamingVoDataChunk);
 
-var _streamingVoFragmentRequest = _dereq_(16);
+var _streamingVoFragmentRequest = _dereq_(17);
 
 var _streamingVoFragmentRequest2 = _interopRequireDefault(_streamingVoFragmentRequest);
 
@@ -2452,9 +2596,13 @@ var _errorsMssErrors = _dereq_(10);
 
 var _errorsMssErrors2 = _interopRequireDefault(_errorsMssErrors);
 
-var _streamingVoDashJSError = _dereq_(14);
+var _streamingVoDashJSError = _dereq_(15);
 
 var _streamingVoDashJSError2 = _interopRequireDefault(_streamingVoDashJSError);
+
+var _streamingUtilsInitCache = _dereq_(14);
+
+var _streamingUtilsInitCache2 = _interopRequireDefault(_streamingUtilsInitCache);
 
 function MssHandler(config) {
 
@@ -2466,11 +2614,13 @@ function MssHandler(config) {
     var initSegmentType = config.initSegmentType;
     var dashMetrics = config.dashMetrics;
     var playbackController = config.playbackController;
+    var streamController = config.streamController;
     var protectionController = config.protectionController;
     var mssFragmentProcessor = (0, _MssFragmentProcessor2['default'])(context).create({
         dashMetrics: dashMetrics,
         playbackController: playbackController,
         protectionController: protectionController,
+        streamController: streamController,
         eventBus: eventBus,
         constants: constants,
         ISOBoxer: config.ISOBoxer,
@@ -2478,39 +2628,25 @@ function MssHandler(config) {
         errHandler: config.errHandler
     });
     var mssParser = undefined,
+        fragmentInfoControllers = undefined,
+        initCache = undefined,
         instance = undefined;
 
-    function setup() {}
+    function setup() {
+        fragmentInfoControllers = [];
+        initCache = (0, _streamingUtilsInitCache2['default'])(context).getInstance();
+    }
 
-    function onInitializationRequested(e) {
-        var streamProcessor = e.sender.getStreamProcessor();
-        var request = new _streamingVoFragmentRequest2['default']();
-        var representationController = streamProcessor.getRepresentationController();
-        var representation = representationController.getCurrentRepresentation();
+    function getStreamProcessor(type) {
+        return streamController.getActiveStreamProcessors().filter(function (processor) {
+            return processor.getType() === type;
+        })[0];
+    }
 
-        request.mediaType = representation.adaptation.type;
-        request.type = initSegmentType;
-        request.range = representation.range;
-        request.quality = representation.index;
-        request.mediaInfo = streamProcessor.getMediaInfo();
-        request.representationId = representation.id;
-
-        var chunk = createDataChunk(request, streamProcessor.getStreamInfo().id, e.type !== events.FRAGMENT_LOADING_PROGRESS);
-
-        try {
-            // Generate initialization segment (moov)
-            chunk.bytes = mssFragmentProcessor.generateMoov(representation);
-        } catch (e) {
-            config.errHandler.error(new _streamingVoDashJSError2['default'](e.code, e.message, e.data));
-        }
-
-        eventBus.trigger(events.INIT_FRAGMENT_LOADED, {
-            chunk: chunk,
-            fragmentModel: streamProcessor.getFragmentModel()
-        });
-
-        // Change the sender value to stop event to be propagated
-        e.sender = null;
+    function getFragmentInfoController(type) {
+        return fragmentInfoControllers.filter(function (controller) {
+            return controller.getType() === type;
+        })[0];
     }
 
     function createDataChunk(request, streamId, endFragment) {
@@ -2532,54 +2668,88 @@ function MssHandler(config) {
 
     function startFragmentInfoControllers() {
 
-        var streamController = playbackController.getStreamController();
-        if (!streamController) {
-            return;
-        }
-
         // Create MssFragmentInfoControllers for each StreamProcessor of active stream (only for audio, video or fragmentedText)
         var processors = streamController.getActiveStreamProcessors();
         processors.forEach(function (processor) {
             if (processor.getType() === constants.VIDEO || processor.getType() === constants.AUDIO || processor.getType() === constants.FRAGMENTED_TEXT) {
 
-                // Check MssFragmentInfoController already registered to StreamProcessor
-                var i = undefined;
-                var alreadyRegistered = false;
-                var externalControllers = processor.getExternalControllers();
-                for (i = 0; i < externalControllers.length; i++) {
-                    if (externalControllers[i].controllerType && externalControllers[i].controllerType === 'MssFragmentInfoController') {
-                        alreadyRegistered = true;
-                    }
-                }
-
-                if (!alreadyRegistered) {
-                    var fragmentInfoController = (0, _MssFragmentInfoController2['default'])(context).create({
+                var fragmentInfoController = getFragmentInfoController(processor.getType());
+                if (!fragmentInfoController) {
+                    fragmentInfoController = (0, _MssFragmentInfoController2['default'])(context).create({
                         streamProcessor: processor,
-                        eventBus: eventBus,
-                        dashMetrics: dashMetrics,
-                        playbackController: playbackController,
                         baseURLController: config.baseURLController,
-                        ISOBoxer: config.ISOBoxer,
                         debug: config.debug
                     });
                     fragmentInfoController.initialize();
-                    fragmentInfoController.start();
+                    fragmentInfoControllers.push(fragmentInfoController);
                 }
+                fragmentInfoController.start();
             }
         });
     }
 
-    function onSegmentMediaLoaded(e) {
-        if (e.error) {
-            return;
+    function stopFragmentInfoControllers() {
+        fragmentInfoControllers.forEach(function (c) {
+            c.reset();
+        });
+        fragmentInfoControllers = [];
+    }
+
+    function onInitFragmentNeeded(e) {
+        var streamProcessor = getStreamProcessor(e.sender.getType());
+        if (!streamProcessor) return;
+
+        // Create init segment request
+        var representationController = streamProcessor.getRepresentationController();
+        var representation = representationController.getCurrentRepresentation();
+        var mediaInfo = streamProcessor.getMediaInfo();
+
+        var request = new _streamingVoFragmentRequest2['default']();
+        request.mediaType = representation.adaptation.type;
+        request.type = initSegmentType;
+        request.range = representation.range;
+        request.quality = representation.index;
+        request.mediaInfo = mediaInfo;
+        request.representationId = representation.id;
+
+        var chunk = createDataChunk(request, mediaInfo.streamInfo.id, e.type !== events.FRAGMENT_LOADING_PROGRESS);
+
+        try {
+            // Generate init segment (moov)
+            chunk.bytes = mssFragmentProcessor.generateMoov(representation);
+
+            // Notify init segment has been loaded
+            eventBus.trigger(events.INIT_FRAGMENT_LOADED, {
+                chunk: chunk
+            });
+        } catch (e) {
+            config.errHandler.error(new _streamingVoDashJSError2['default'](e.code, e.message, e.data));
         }
-        // Process moof to transcode it from MSS to DASH
-        var streamProcessor = e.sender.getStreamProcessor();
+
+        // Change the sender value to stop event to be propagated
+        e.sender = null;
+    }
+
+    function onSegmentMediaLoaded(e) {
+        if (e.error) return;
+
+        var streamProcessor = getStreamProcessor(e.request.mediaType);
+        if (!streamProcessor) return;
+
+        // Process moof to transcode it from MSS to DASH (or to update segment timeline for SegmentInfo fragments)
         mssFragmentProcessor.processFragment(e, streamProcessor);
 
+        if (e.request.type === 'FragmentInfoSegment') {
+            // If FragmentInfo loaded, then notify corresponding MssFragmentInfoController
+            var fragmentInfoController = getFragmentInfoController(e.request.mediaType);
+            if (fragmentInfoController) {
+                fragmentInfoController.fragmentInfoLoaded(e);
+            }
+        }
+
         // Start MssFragmentInfoControllers in case of start-over streams
-        var streamInfo = streamProcessor.getStreamInfo();
-        if (!streamInfo.manifestInfo.isDynamic && streamInfo.manifestInfo.DVRWindowSize !== Infinity) {
+        var manifestInfo = e.request.mediaInfo.streamInfo.manifestInfo;
+        if (!manifestInfo.isDynamic && manifestInfo.DVRWindowSize !== Infinity) {
             startFragmentInfoControllers();
         }
     }
@@ -2605,7 +2775,7 @@ function MssHandler(config) {
     }
 
     function registerEvents() {
-        eventBus.on(events.INIT_REQUESTED, onInitializationRequested, instance, dashjs.FactoryMaker.getSingletonFactoryByName(eventBus.getClassName()).EVENT_PRIORITY_HIGH); /* jshint ignore:line */
+        eventBus.on(events.INIT_FRAGMENT_NEEDED, onInitFragmentNeeded, instance, dashjs.FactoryMaker.getSingletonFactoryByName(eventBus.getClassName()).EVENT_PRIORITY_HIGH); /* jshint ignore:line */
         eventBus.on(events.PLAYBACK_PAUSED, onPlaybackPaused, instance, dashjs.FactoryMaker.getSingletonFactoryByName(eventBus.getClassName()).EVENT_PRIORITY_HIGH); /* jshint ignore:line */
         eventBus.on(events.PLAYBACK_SEEK_ASKED, onPlaybackSeekAsked, instance, dashjs.FactoryMaker.getSingletonFactoryByName(eventBus.getClassName()).EVENT_PRIORITY_HIGH); /* jshint ignore:line */
         eventBus.on(events.FRAGMENT_LOADING_COMPLETED, onSegmentMediaLoaded, instance, dashjs.FactoryMaker.getSingletonFactoryByName(eventBus.getClassName()).EVENT_PRIORITY_HIGH); /* jshint ignore:line */
@@ -2613,11 +2783,19 @@ function MssHandler(config) {
     }
 
     function reset() {
-        eventBus.off(events.INIT_REQUESTED, onInitializationRequested, this);
+        if (mssParser) {
+            mssParser.reset();
+            mssParser = undefined;
+        }
+
+        eventBus.off(events.INIT_FRAGMENT_NEEDED, onInitFragmentNeeded, this);
         eventBus.off(events.PLAYBACK_PAUSED, onPlaybackPaused, this);
         eventBus.off(events.PLAYBACK_SEEK_ASKED, onPlaybackSeekAsked, this);
         eventBus.off(events.FRAGMENT_LOADING_COMPLETED, onSegmentMediaLoaded, this);
         eventBus.off(events.TTML_TO_PARSE, onTTMLPreProcess, this);
+
+        // Reset FragmentInfoControllers
+        stopFragmentInfoControllers();
     }
 
     function createMssParser() {
@@ -2644,7 +2822,7 @@ exports['default'] = factory;
 /* jshint ignore:line */
 module.exports = exports['default'];
 
-},{"10":10,"12":12,"14":14,"15":15,"16":16,"5":5,"8":8}],10:[function(_dereq_,module,exports){
+},{"10":10,"12":12,"14":14,"15":15,"16":16,"17":17,"5":5,"8":8}],10:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -2689,7 +2867,7 @@ function _classCallCheck(instance, Constructor) { if (!(instance instanceof Cons
 
 function _inherits(subClass, superClass) { if (typeof superClass !== 'function' && superClass !== null) { throw new TypeError('Super expression must either be null or a function, not ' + typeof superClass); } subClass.prototype = Object.create(superClass && superClass.prototype, { constructor: { value: subClass, enumerable: false, writable: true, configurable: true } }); if (superClass) Object.setPrototypeOf ? Object.setPrototypeOf(subClass, superClass) : subClass.__proto__ = superClass; }
 
-var _coreErrorsErrorsBase = _dereq_(2);
+var _coreErrorsErrorsBase = _dereq_(3);
 
 var _coreErrorsErrorsBase2 = _interopRequireDefault(_coreErrorsErrorsBase);
 
@@ -2726,7 +2904,7 @@ var mssErrors = new MssErrors();
 exports['default'] = mssErrors;
 module.exports = exports['default'];
 
-},{"2":2}],11:[function(_dereq_,module,exports){
+},{"3":3}],11:[function(_dereq_,module,exports){
 (function (global){
 /**
  * The copyright in this software is being made available under the BSD License,
@@ -2878,7 +3056,8 @@ function MssParser(config) {
     };
 
     var instance = undefined,
-        logger = undefined;
+        logger = undefined,
+        initialBufferSettings = undefined;
 
     function setup() {
         logger = debug.getLogger(instance);
@@ -3484,8 +3663,8 @@ function MssParser(config) {
             if (adaptations[i].contentType === 'video') {
                 // Get video segment duration
                 segmentDuration = adaptations[i].SegmentTemplate.SegmentTimeline.S_asArray[0].d / adaptations[i].SegmentTemplate.timescale;
-                // Set minBufferTime
-                manifest.minBufferTime = segmentDuration * 2;
+                // Set minBufferTime to one segment duration
+                manifest.minBufferTime = segmentDuration;
 
                 if (manifest.type === 'dynamic') {
                     // Set availabilityStartTime
@@ -3517,6 +3696,17 @@ function MssParser(config) {
             var liveDelay = Math.min(targetDelayCapping, targetLiveDelay);
             // Consider a margin of one segment in order to avoid Precondition Failed errors (412), for example if audio and video are not correctly synchronized
             var bufferTime = liveDelay - segmentDuration;
+
+            // Store initial buffer settings
+            initialBufferSettings = {
+                'streaming': {
+                    'liveDelay': settings.get().streaming.liveDelay,
+                    'stableBufferTime': settings.get().streaming.stableBufferTime,
+                    'bufferTimeAtTopQuality': settings.get().streaming.bufferTimeAtTopQuality,
+                    'bufferTimeAtTopQualityLongForm': settings.get().streaming.bufferTimeAtTopQualityLongForm
+                }
+            };
+
             settings.update({
                 'streaming': {
                     'liveDelay': liveDelay,
@@ -3544,7 +3734,7 @@ function MssParser(config) {
                 for (i = 0; i < adaptations.length; i++) {
                     if (adaptations[i].contentType === constants.AUDIO || adaptations[i].contentType === constants.VIDEO) {
                         segments = adaptations[i].SegmentTemplate.SegmentTimeline.S_asArray;
-                        startTime = segments[0].t / adaptations[i].SegmentTemplate.timescale;
+                        startTime = segments[0].t;
                         if (timestampOffset === undefined) {
                             timestampOffset = startTime;
                         }
@@ -3555,16 +3745,16 @@ function MssParser(config) {
                     }
                 }
             }
-            // Patch segment templates timestamps and determine period start time (since audio/video should not be aligned to 0)
             if (timestampOffset > 0) {
+                // Patch segment templates timestamps and determine period start time (since audio/video should not be aligned to 0)
                 manifest.timestampOffset = timestampOffset;
                 for (i = 0; i < adaptations.length; i++) {
                     segments = adaptations[i].SegmentTemplate.SegmentTimeline.S_asArray;
                     for (j = 0; j < segments.length; j++) {
                         if (!segments[j].tManifest) {
-                            segments[j].tManifest = segments[j].t;
+                            segments[j].tManifest = segments[j].t.toString();
                         }
-                        segments[j].t -= timestampOffset * adaptations[i].SegmentTemplate.timescale;
+                        segments[j].t -= timestampOffset;
                     }
                     if (adaptations[i].contentType === constants.AUDIO || adaptations[i].contentType === constants.VIDEO) {
                         period.start = Math.max(segments[0].t, period.start);
@@ -3631,10 +3821,18 @@ function MssParser(config) {
         return manifest;
     }
 
+    function reset() {
+        // Restore initial buffer settings
+        if (initialBufferSettings) {
+            settings.update(initialBufferSettings);
+        }
+    }
+
     instance = {
         parse: internalParse,
         getMatchers: getMatchers,
-        getIron: getIron
+        getIron: getIron,
+        reset: reset
     };
 
     setup();
@@ -3692,7 +3890,7 @@ function _classCallCheck(instance, Constructor) { if (!(instance instanceof Cons
 
 function _inherits(subClass, superClass) { if (typeof superClass !== 'function' && superClass !== null) { throw new TypeError('Super expression must either be null or a function, not ' + typeof superClass); } subClass.prototype = Object.create(superClass && superClass.prototype, { constructor: { value: subClass, enumerable: false, writable: true, configurable: true } }); if (superClass) Object.setPrototypeOf ? Object.setPrototypeOf(subClass, superClass) : subClass.__proto__ = superClass; }
 
-var _coreEventsEventsBase = _dereq_(3);
+var _coreEventsEventsBase = _dereq_(4);
 
 var _coreEventsEventsBase2 = _interopRequireDefault(_coreEventsEventsBase);
 
@@ -3849,6 +4047,12 @@ var MediaPlayerEvents = (function (_EventsBase) {
 
     /**
      * Triggered when a stream (period) is loaded
+     * @event MediaPlayerEvents#STREAM_UPDATED
+     */
+    this.STREAM_UPDATED = 'streamUpdated';
+
+    /**
+     * Triggered when a stream (period) is updated
      * @event MediaPlayerEvents#STREAM_INITIALIZED
      */
     this.STREAM_INITIALIZED = 'streamInitialized';
@@ -4007,6 +4211,12 @@ var MediaPlayerEvents = (function (_EventsBase) {
      * @event MediaPlayerEvents#MANIFEST_VALIDITY_CHANGED
      */
     this.MANIFEST_VALIDITY_CHANGED = 'manifestValidityChanged';
+
+    /**
+     * A gap occured in the timeline which requires a seek to the next period
+     * @event MediaPlayerEvents#GAP_CAUSED_SEEK_TO_PERIOD_END
+     */
+    this.GAP_CAUSED_SEEK_TO_PERIOD_END = 'gapCausedSeekToPeriodEnd';
   }
 
   return MediaPlayerEvents;
@@ -4016,7 +4226,92 @@ var mediaPlayerEvents = new MediaPlayerEvents();
 exports['default'] = mediaPlayerEvents;
 module.exports = exports['default'];
 
-},{"3":3}],14:[function(_dereq_,module,exports){
+},{"4":4}],14:[function(_dereq_,module,exports){
+/**
+ * The copyright in this software is being made available under the BSD License,
+ * included below. This software may be subject to other third party and contributor
+ * rights, including patent rights, and no such rights are granted under this license.
+ *
+ * Copyright (c) 2013, Dash Industry Forum.
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without modification,
+ * are permitted provided that the following conditions are met:
+ *  * Redistributions of source code must retain the above copyright notice, this
+ *  list of conditions and the following disclaimer.
+ *  * Redistributions in binary form must reproduce the above copyright notice,
+ *  this list of conditions and the following disclaimer in the documentation and/or
+ *  other materials provided with the distribution.
+ *  * Neither the name of Dash Industry Forum nor the names of its
+ *  contributors may be used to endorse or promote products derived from this software
+ *  without specific prior written permission.
+ *
+ *  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS AS IS AND ANY
+ *  EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+ *  WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+ *  IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT,
+ *  INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
+ *  NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
+ *  PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+ *  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ *  ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+ *  POSSIBILITY OF SUCH DAMAGE.
+ */
+
+/**
+ * Represents data structure to keep and drive {DataChunk}
+ */
+
+'use strict';
+
+Object.defineProperty(exports, '__esModule', {
+    value: true
+});
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { 'default': obj }; }
+
+var _coreFactoryMaker = _dereq_(2);
+
+var _coreFactoryMaker2 = _interopRequireDefault(_coreFactoryMaker);
+
+function InitCache() {
+
+    var data = {};
+
+    function save(chunk) {
+        var id = chunk.streamId;
+        var representationId = chunk.representationId;
+
+        data[id] = data[id] || {};
+        data[id][representationId] = chunk;
+    }
+
+    function extract(streamId, representationId) {
+        if (data && data[streamId] && data[streamId][representationId]) {
+            return data[streamId][representationId];
+        } else {
+            return null;
+        }
+    }
+
+    function reset() {
+        data = {};
+    }
+
+    var instance = {
+        save: save,
+        extract: extract,
+        reset: reset
+    };
+
+    return instance;
+}
+
+InitCache.__dashjs_factory_name = 'InitCache';
+exports['default'] = _coreFactoryMaker2['default'].getSingletonFactory(InitCache);
+module.exports = exports['default'];
+
+},{"2":2}],15:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -4070,7 +4365,7 @@ var DashJSError = function DashJSError(code, message, data) {
 exports["default"] = DashJSError;
 module.exports = exports["default"];
 
-},{}],15:[function(_dereq_,module,exports){
+},{}],16:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -4135,7 +4430,7 @@ function DataChunk() {
 exports["default"] = DataChunk;
 module.exports = exports["default"];
 
-},{}],16:[function(_dereq_,module,exports){
+},{}],17:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -4177,7 +4472,7 @@ var _createClass = (function () { function defineProperties(target, props) { for
 
 function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError('Cannot call a class as a function'); } }
 
-var _voMetricsHTTPRequest = _dereq_(17);
+var _voMetricsHTTPRequest = _dereq_(18);
 
 /**
  * @class
@@ -4237,7 +4532,7 @@ FragmentRequest.ACTION_COMPLETE = 'complete';
 exports['default'] = FragmentRequest;
 module.exports = exports['default'];
 
-},{"17":17}],17:[function(_dereq_,module,exports){
+},{"18":18}],18:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor

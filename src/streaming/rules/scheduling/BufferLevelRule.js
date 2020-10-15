@@ -44,22 +44,21 @@ function BufferLevelRule(config) {
     function setup() {
     }
 
-    function execute(streamProcessor, videoTrackPresent) {
-        if (!streamProcessor) {
+    function execute(type, representationInfo) {
+        if (!type || !representationInfo) {
             return true;
         }
-        const bufferLevel = dashMetrics.getCurrentBufferLevel(streamProcessor.getType());
-        return bufferLevel < getBufferTarget(streamProcessor, videoTrackPresent);
+        const bufferLevel = dashMetrics.getCurrentBufferLevel(type);
+        return bufferLevel < getBufferTarget(type, representationInfo);
     }
 
-    function getBufferTarget(streamProcessor, videoTrackPresent) {
+    function getBufferTarget(type, representationInfo) {
         let bufferTarget = NaN;
 
-        if (!streamProcessor) {
+        if (!type || !representationInfo) {
             return bufferTarget;
         }
-        const type = streamProcessor.getType();
-        const representationInfo = streamProcessor.getRepresentationInfo();
+
         if (type === Constants.FRAGMENTED_TEXT) {
             if (textController.isTextEnabled()) {
                 if (isNaN(representationInfo.fragmentDuration)) { //fragmentDuration of representationInfo is not defined,
@@ -73,14 +72,7 @@ function BufferLevelRule(config) {
             } else { // text is disabled, rule will return false
                 bufferTarget = 0;
             }
-        } else if (type === Constants.AUDIO && videoTrackPresent) {
-            const videoBufferLevel = dashMetrics.getCurrentBufferLevel(Constants.VIDEO);
-            if (isNaN(representationInfo.fragmentDuration)) {
-                bufferTarget = videoBufferLevel;
-            } else {
-                bufferTarget = Math.max(videoBufferLevel, representationInfo.fragmentDuration);
-            }
-        } else {
+        }  else {
             const streamInfo = representationInfo.mediaInfo.streamInfo;
             if (abrController.isPlayingAtTopQuality(streamInfo)) {
                 const isLongFormContent = streamInfo.manifestInfo.duration >= settings.get().streaming.longFormContentDurationThreshold;

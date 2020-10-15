@@ -33,6 +33,7 @@ import Events from '../core/events/Events';
 import FactoryMaker from '../core/FactoryMaker';
 import Debug from '../core/Debug';
 import Errors from '../core/errors/Errors';
+import DashConstants from '../dash/constants/DashConstants';
 
 function ManifestUpdater() {
 
@@ -138,6 +139,13 @@ function ManifestUpdater() {
 
     function update(manifest) {
 
+        // See DASH-IF IOP v4.3 section 4.6.4 "Transition Phase between Live and On-Demand"
+        // Stop manifest update, ignore static manifest and signal end of dynamic stream to detect end of stream
+        if (manifestModel.getValue() && manifestModel.getValue().type === DashConstants.DYNAMIC && manifest.type === DashConstants.STATIC) {
+            eventBus.trigger(Events.DYNAMIC_STREAM_COMPLETED);
+            return;
+        }
+
         manifestModel.setValue(manifest);
 
         const date = new Date();
@@ -157,7 +165,7 @@ function ManifestUpdater() {
     }
 
     function onRefreshTimer() {
-        if (isPaused && !settings.get().streaming.scheduleWhilePaused) {
+        if (isPaused) {
             return;
         }
         if (isUpdating) {
@@ -181,8 +189,11 @@ function ManifestUpdater() {
     }
 
     function onPlaybackPaused(/*e*/) {
-        isPaused = true;
-        stopManifestRefreshTimer();
+        isPaused = !settings.get().streaming.scheduleWhilePaused;
+
+        if (isPaused) {
+            stopManifestRefreshTimer();
+        }
     }
 
     function onStreamsComposed(/*e*/) {
