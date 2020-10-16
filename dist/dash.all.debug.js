@@ -48390,7 +48390,10 @@ function ProtectionModel_21Jan2015(config) {
         // Generate initial key request.
         // keyids type is used for clearkey when keys are provided directly in the protection data and then request to a license server is not needed
         var dataType = ks.systemString === _constantsProtectionConstants2['default'].CLEARKEY_KEYSTEM_STRING && (initData || protData && protData.clearkeys) ? 'keyids' : 'cenc';
-        session.generateRequest(dataType, initData).then(function () {
+        // send customData as third param if it's provided - Liberty Global Horizon, in theory shouldn't
+        // break other things
+        var customData = protData && protData.cdmData ? protData.cdmData : undefined;
+        session.generateRequest(dataType, initData, customData).then(function () {
             logger.debug('DRM: Session created.  SessionID = ' + sessionToken.getSessionID());
             eventBus.trigger(events.KEY_SESSION_CREATED, { data: sessionToken });
         })['catch'](function (error) {
