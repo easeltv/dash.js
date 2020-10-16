@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <title>ThePlatform Smooth Streaming + PlayReady example</title>
+
+  <script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/lodash@4.17.20/lodash.min.js"></script>
+  <script src="../../dist/dash.all.debug.js"></script>
+  <!--dash.all.min.js should be used in production over dash.all.debug.js
+    Debug files are not compressed or obfuscated making the file size much larger compared with dash.all.min.js-->
+  <!--<script src="../../dist/dash.all.min.js"></script>-->
+  <!-- add mss package which is required to play Smooth Streaming streams -->
+  <script class="code" src="../../dist/dash.mss.debug.js"></script>
+
+  <script class="code">
+
+    // save time, populate these
+    var defaults = {
+      licenseServer: "http://playready.entitlement.theplatform.eu/playready/rightsmanager.asmx",
+      mpxToken: "",
+      mediaUrl: "",
+      accountId: "http://access.auth.theplatform.com/data/Account/2669535363",
+      autoLoad: false
+    };
+
+    var query = _(location.search.substr(1)).split("&").map(function(x) { return x.split("="); })
+      .fromPairs().transform(function(r, v, k) { r[k] = decodeURIComponent(v); }).value();
+    defaults = _.merge(defaults, query);
+
+    function populateDefaults() {
+      $("#licenseserver").val(defaults.licenseServer);
+      $("#mpxtoken").val(defaults.mpxToken);
+      $("#mediaurl").val(defaults.mediaUrl);
+      $("#accountid").val(defaults.accountId);
+    }
+
+    function fetchStreamData() {
+      var mpxToken = $("#mpxtoken").val();
+      var mediaUrl = $("#mediaurl").val();
+
+      var url = mediaUrl + "?format=smil&formats=ism&manifest=ism&tracking=true&clientId=prtest"
+        + "&token=" + encodeURIComponent(mpxToken);
+      $.ajax({url: url, dataType: "xml"}).done(function(xml) {
+        var $xml = $(xml);
+        var trackingData = $xml.find("ref").find("param[name=trackingData]").attr("value");
+        var releasePid = trackingData ? _.last(trackingData.match(/\|pid=(.*?)\|/)) : "";
+        var streamUrl = $xml.find("video").attr("src");
+        var customData = ["schema=1.0", "auth=" + mpxToken,
+          "account=" + $("#accountid").val(), "releasePid=" + releasePid].join(" ");
+
+       init("https://cors-anywhere.herokuapp.com/" + streamUrl, customData);
+        // init(streamUrl, customData);
+      });
+    }
+
+    function init(streamUrl, customData) {
+
+      const protData = {
+        "com.microsoft.playready": {
+          "serverURL": $("#licenseserver").val(),
+          "cdmData": customData
+         }
+      };
+
+      var video = document.querySelector("video");
+      var player = dashjs.MediaPlayer().create();
+      player.initialize(video, streamUrl, true);
+      if (protData["com.microsoft.playready"].serverURL) {
+        player.setProtectionData(protData);
+      }
+    }
+  </script>
+
+  <style>
+    video {
+      width: 640px;
+      height: 360px;
+    }
+  </style>
+</head>
+<body>
+<div>
+  <video controls="true">
+  </video>
+</div>
+
+<div>
+  <form>
+    <label for="licenseserver">License server:</label><br>
+    <input type="text" id="licenseserver" name="licenseserver" value="" size="90"><br>
+    <label for="accountid">Account ID:</label><br>
+    <input type="text" id="accountid" name="accountid" value="" size="90"><br>
+    <label for="mpxtoken">MPX token:</label><br>
+    <input type="text" id="mpxtoken" name="mpxtoken" value="" size="90"><br>
+    <label for="mediaurl">Media URL:</label><br>
+    <input type="text" id="mediaurl" name="mediaurl" value="" size="90"><br><br>
+    <input type="button" id="load" value="&gt;&gt; Load vid &lt;&lt;">
+  </form>
+</div>
+
+<script>
+  document.addEventListener("DOMContentLoaded", function () {
+    populateDefaults()
+    $("#load").click(fetchStreamData);
+    if (defaults.autoLoad) {
+      fetchStreamData();
+    }
+  });
+</script>
+<!--
+<script src="../highlighter.js"></script>
+-->
+</body>
+</html>
+
+

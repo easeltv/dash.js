@@ -8,6 +8,12 @@
                 "description": "(License wrapping)",
                 "href": "easel/theplatform-dash-widevine.html",
                 "width": "20rem"
+            },
+            {
+                "title": "ThePlatform Smooth Streaming + PlayReady example",
+                "description": "(Custom data)",
+                "href": "easel/theplatform-smoothstreaming-playready.html",
+                "width": "20rem"
             }
         ]
     },
