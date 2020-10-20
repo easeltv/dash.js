@@ -46603,7 +46603,7 @@ function ProtectionKeyController() {
      *
      */
     function getLicenseServer(keySystem, protData, messageType) {
-        console.log('ProtectionKeyController getLicenseServer', arguments);
+        console.log('ProtectionKeyController getLicenseServer', keySystem, protData, messageType);
 
         // Our default server implementations do not do anything with "license-release" or
         // "individualization-request" messages, so we just send a success event
