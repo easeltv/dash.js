@@ -52,8 +52,8 @@
           "account=" + $("#accountid").val(), "releasePid=" + releasePid].join(" ");
 
        // docker run -d -p 8080:8080 --name cors-anywhere redocly/cors-anywhere
-       init("http://" + location.hostname + ":8080/" + streamUrl, customData);
-       //init(streamUrl, customData);
+       //init("http://" + location.hostname + ":8080/" + streamUrl, customData);
+       init(streamUrl, customData);
       });
     }
 

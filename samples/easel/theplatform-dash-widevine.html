@@ -34,11 +34,14 @@
     }
 
     function fetchStreamData() {
+
       var mpxToken = $("#mpxtoken").val();
       var mediaUrl = $("#mediaurl").val();
 
       var url = mediaUrl + "?format=smil&formats=mpeg-dash&manifest=mpeg-dash&tracking=true&clientId=wvtest"
         + "&token=" + encodeURIComponent(mpxToken);
+      console.log("smil url", url);
+
       $.ajax({url: url, dataType: "xml"}).done(function(xml) {
         var $xml = $(xml);
         var trackingData = $xml.find("ref").find("param[name=trackingData]").attr("value");
@@ -69,6 +72,7 @@
   </script>
 
   <style>
+    background-color: #fff;
     video {
       width: 640px;
       height: 360px;
