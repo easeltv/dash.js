@@ -122,40 +122,73 @@
   document.addEventListener('keydown', function(ev) {
     console.log('keydown', ev.key, ev.keyCode, ev.code)
     var handled = true;
-    switch (ev.key) {
-      case "MediaPlayPause":
+    // switch (ev.key) {
+    //   case "MediaPlayPause":
+    //     if (player) {
+    //       player.isPaused() ? player.play() : player.pause();
+    //     }
+    //     break;
+    //   case "MediaRewind":
+    //     try {
+    //       player.seek(player.time() - 60);
+    //     } catch (err) {
+    //       console.log("seek err", err);
+    //     }
+    //     break;
+    //   case "MediaFastForward":
+    //     try {
+    //       player.seek(player.time() + 60);
+    //     } catch (err) {
+    //       console.log("seek err", err);
+    //     }
+    //     break;
+    //   case "Escape":
+    //     history.back();
+    //     break;
+    //   case "1":
+    //     window.location.reload(true);
+    //     break;
+    //   case "Up":
+    //   case "Down":
+    //   case "Left":
+    //   case "Right":
+    //   case "2":
+    //   case "3":
+    //   case "4":
+    //   default:
+    //     handled = false;
+    // }
+    switch (ev.keyCode) {
+      case 179: // real life eos play/pause
+      case 155: // as documented
         if (player) {
           player.isPaused() ? player.play() : player.pause();
         }
         break;
-      case "MediaRewind":
-        try {
-          player.seek(player.time() - 60);
-        } catch (err) {
-          console.log("seek err", err);
-        }
-        break;
-      case "MediaFastForward":
+      case 228: // real life eos ffwd
+      case 152: // as documented
         try {
           player.seek(player.time() + 60);
         } catch (err) {
           console.log("seek err", err);
         }
         break;
-      case "Escape":
-        history.back();
+      case 227: // real life eos rewind
+      case 151: // as documented
+        try {
+          player.seek(player.time() - 60);
+        } catch (err) {
+          console.log("seek err", err);
+        }
         break;
-      case "1":
+      case 49: // 1
         window.location.reload(true);
         break;
-      case "Up":
-      case "Down":
-      case "Left":
-      case "Right":
-      case "2":
-      case "3":
-      case "4":
-      default:
+      case 27: // back - real life eos
+      case 129: // as documented
+        history.back();
+        break;
+      default: 
         handled = false;
     }
     return handled
